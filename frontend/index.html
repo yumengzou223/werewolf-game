@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 狼人杀</title>
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <div id="lobby">
+    <div class="title-wrap">
+      <h1 class="main-title">🐺 AI 狼人杀</h1>
+      <p class="subtitle">标准六人局 · AI 与你共同参与</p>
+    </div>
+
+    <div class="panel">
+      <h2>创建房间</h2>
+      <input id="create-name" class="input" placeholder="你的名字" maxlength="10" />
+      <div class="ai-count-row">
+        <span>AI 玩家数量：</span>
+        <button class="btn-sm" onclick="changeAI(0)">−</button>
+        <span id="ai-count">3</span>
+        <button class="btn-sm" onclick="changeAI(1)">+</button>
+      </div>
+      <button class="btn-primary" onclick="createRoom()">创建房间</button>
+    </div>
+
+    <div class="divider">或者</div>
+
+    <div class="panel">
+      <h2>加入房间</h2>
+      <input id="join-id" class="input" placeholder="房间号" maxlength="8" />
+      <input id="join-name" class="input" placeholder="你的名字" maxlength="10" />
+      <button class="btn-primary" onclick="joinRoom()">加入</button>
+    </div>
+
+    <p class="tip">💡 房主可以设置 AI 玩家数量，游戏开始后 AI 将扮演其他角色</p>
+  </div>
+
+  <button class="rules-btn" onclick="openRules()">📖 规则</button>
+
+  <div id="modal-rules" class="modal">
+    <div class="rules-panel">
+      <h2>🐺 狼人杀规则</h2>
+      <p>标准 6 人局：2 狼人、1 预言家、1 女巫、2 村民</p>
+      <p><b>夜间：</b>狼人击杀、预言家查验、女巫用药</p>
+      <p><b>白天：</b>死亡揭晓 → 轮流发言(60秒) → 投票出局</p>
+      <p><b>胜利：</b>好人投光狼人 / 狼人杀光村民</p>
+      <button onclick="document.getElementById('modal-rules').style.display='none'">知道了！</button>
+    </div>
+  </div>
+
+  <style>
+    .rules-btn { position: fixed; bottom: 20px; right: 20px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 13px; }
+    .rules-btn:hover { background: rgba(255,255,255,0.15); }
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 9999; padding: 20px; }
+    .rules-panel { background: #1a1a2e; border-radius: 24px; padding: 32px 24px; max-width: 400px; width: 100%; text-align: center; }
+    .rules-panel h2 { margin-bottom: 16px; }
+    .rules-panel p { color: #aaa; font-size: 14px; line-height: 1.8; text-align: left; margin-bottom: 8px; }
+    .rules-panel button { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; border: none; padding: 12px 40px; border-radius: 50px; cursor: pointer; margin-top: 16px; font-size: 15px; }
+  </style>
+
+  <script>
+    function openRules() { document.getElementById('modal-rules').style.display = 'flex'; }
+  </script>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script>
+    const API = "";
+    let socket = null;
+    let myPlayerId = null;
+    let myRoomId = null;
+    let aiCount = 3;
+
+    function changeAI(delta) {
+      aiCount = Math.max(1, Math.min(5, aiCount + delta));
+      document.getElementById("ai-count").textContent = aiCount;
+    }
+
+    async function createRoom() {
+      const name = document.getElementById("create-name").value.trim() || "房主";
+      const res = await fetch("/api/room/create", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ player_name: name }),
+      }).then(r => r.json());
+
+      myPlayerId = res.player_id;
+      myRoomId = res.room_id;
+      localStorage.setItem("werewolf_player", myPlayerId);
+      localStorage.setItem("werewolf_room", myRoomId);
+
+      // 自动添加AI
+      for (let i = 0; i < aiCount; i++) {
+        await fetch(`/api/room/${myRoomId}/add-ai`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ role: null }),
+        });
+      }
+
+      location.href = `/game.html?room=${myRoomId}&pid=${myPlayerId}`;
+    }
+
+    async function joinRoom() {
+      const roomId = document.getElementById("join-id").value.trim();
+      const name = document.getElementById("join-name").value.trim() || "玩家";
+      if (!roomId) return alert("请输入房间号");
+
+      const res = await fetch(`/api/room/${roomId}/join`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ player_name: name }),
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        alert("房间不存在或已满");
+        return;
+      }
+      const data = await res.json();
+      myPlayerId = data.player_id;
+      myRoomId = roomId;
+      localStorage.setItem("werewolf_player", myPlayerId);
+      localStorage.setItem("werewolf_room", myRoomId);
+      location.href = `/game.html?room=${myRoomId}&pid=${myPlayerId}`;
+    }
+
+    // 读取缓存
+    const cached = localStorage.getItem("werewolf_player");
+    const cachedRoom = localStorage.getItem("werewolf_room");
+  </script>
+</body>
+</html>
