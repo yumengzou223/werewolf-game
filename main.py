@@ -375,7 +375,7 @@ def api_start(room_id):
         return jsonify({"error": "至少需要4人"}), 400
 
     room.setup_game()
-    socketio.emit("game_started", room.get_state(), room=room_id)
+    socketio.emit("game_started", room.get_state(reveal_all=True), room=room_id)
     # 开始夜晚
     threading.Timer(2, start_night_phase, args=[room_id]).start()
     return jsonify({"ok": True})
