@@ -198,11 +198,14 @@ function onGameStarted(data) {
   console.log("[Werewolf] onGameStarted received, phase:", data.phase);
   gameState = data;
   const myPlayer = data.players.find(p => p.id === myPlayerId);
-  const myRole = myPlayer ? myPlayer.role : null;
-  showPage("night");
-  // 显示身份牌，然后进入夜晚
+  // 显示身份牌（3秒），然后进入夜晚
   showRoleReveal(myPlayer, function() {
-    startNightPhase(data, false);
+    // 客户端直接进入夜晚页面，不等服务器
+    showPage("night");
+    document.getElementById("night-overlay").style.display = "flex";
+    document.getElementById("night-target-section").style.display = "none";
+    document.querySelector(".all-closed-eyes").style.display = "flex";
+    document.getElementById("night-instruction").textContent = "天黑请闭眼，等待狼人睁眼...";
   });
 }
 
@@ -241,7 +244,7 @@ function showRoleReveal(myPlayer, callback) {
 function onNightStart(data) {
   console.log("[Werewolf] onNightStart received");
   gameState = data;
-  startNightPhase(data, true);
+  startNightPhase(data);
 }
 
 function onRoleTurn(data) {
@@ -369,16 +372,12 @@ function renderWaitingRoom(state) {
 }
 
 // ========== 夜间阶段 ==========
-function startNightPhase(state, fromServer) {
+function startNightPhase(state) {
   showPage("night");
   document.getElementById("night-overlay").style.display = "flex";
   document.getElementById("night-target-section").style.display = "none";
   document.querySelector(".all-closed-eyes").style.display = "flex";
   document.getElementById("night-instruction").textContent = "天黑请闭眼...";
-  // 如果是客户端主动触发的（游戏开始动画完成后），通知服务器
-  if (!fromServer) {
-    socket.emit("client_ready", { room_id: myRoomId, player_id: myPlayerId });
-  }
 }
 
 function showWolfTurn(data) {
