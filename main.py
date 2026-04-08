@@ -252,7 +252,7 @@ class GameRoom:
 
 
 # ====================== Socket.IO 事件 ======================
-_FRONTEND_DIR = os.environ.get("WEREWOLF_FRONTEND", os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend"))
+_FRONTEND_DIR = os.environ.get("WEREWOLF_FRONTEND", "/repo/frontend")
 
 connected_sids = {}  # sid -> {room_id, player_id}
 
