@@ -252,13 +252,20 @@ class GameRoom:
 
 
 # ====================== Socket.IO 事件 ======================
-_FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")
+_FRONTEND_DIR = os.environ.get("WEREWOLF_FRONTEND", os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend"))
 
 connected_sids = {}  # sid -> {room_id, player_id}
 
 @app.route("/")
 def index():
-    return send_from_directory(_FRONTEND_DIR, "index.html")
+    try:
+        return send_from_directory(_FRONTEND_DIR, "index.html")
+    except Exception as e:
+        return f"Frontend not found at {_FRONTEND_DIR}. Error: {e}", 500
+
+@app.route("/health")
+def health():
+    return "ok", 200
 
 @app.route("/api/room/create", methods=["POST"])
 def api_create():
