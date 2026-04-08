@@ -20,7 +20,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 app.config["SECRET_KEY"] = "werewolf-secret-2024"
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
-DEEPSEEK_API_KEY = ""
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 # ====================== 角色定义 ======================
@@ -706,6 +706,69 @@ def start_discussion(room_id):
 
     threading.Timer(1, next_speaker).start()
 
+def generate_llm_speech(player, room):
+    """调用 DeepSeek LLM 生成狼人杀发言"""
+    if not DEEPSEEK_API_KEY:
+        return None
+
+    role_prompts = {
+        "werewolf": ("你是一个狼人杀游戏中的狼人。你知道其他狼人的身份。"
+                     "你的目标是在不被发现的情况下带领村民投错人。"
+                     "发言要自然，不能太明显暗示自己是狼人，也要适时甩锅给别人。"
+                     "用30-50字简短发言，符合中国狼人杀风格。"),
+        "seer": ("你是一个狼人杀游戏中的预言家。你已经查验了一些玩家的身份。"
+                 "你可以选择报信息或者保持低调。发言要符合神职人员的身份，"
+                 "逻辑清晰，不轻易暴露自己但该报信息时要报。"
+                 "用30-50字简短发言。"),
+        "witch": ("你是一个狼人杀游戏中的女巫。你有救药和毒药。"
+                  "发言要显示出你在观察局势但不过分积极参与。"
+                  "用30-50字简短发言。"),
+        "villager": ("你是一个狼人杀游戏中的村民。你没有任何特殊能力。"
+                     "你的目标是分析发言找出狼人。"
+                     "发言要显示出你在认真听、认真分析，但不要过度分析显得刻意。"
+                     "用30-50字简短发言。"),
+    }
+
+    # 收集近期发言上下文
+    recent_msgs = []
+    for m in room.messages[-8:]:
+        recent_msgs.append(f"{m['name']}：{m['content']}")
+
+    prompt_base = role_prompts.get(player.role, role_prompts["villager"])
+    context = f"当前是第{room.day}天。"
+    if recent_msgs:
+        context += f"\n近期发言：\n" + "\n".join(recent_msgs)
+    context += f"\n\n你的身份是{ROLES.get(player.role, {}).get('name', '村民')}，你是{'AI' if player.is_ai else '玩家'}。"
+    context += "请用一句话发言（30字以内），直接输出发言内容，不需要加引号或其他标记。"
+
+    try:
+        import urllib.request, json
+        req_data = {
+            "model": "deepseek-chat",
+            "messages": [
+                {"role": "system", "content": prompt_base},
+                {"role": "user", "content": context}
+            ],
+            "max_tokens": 100,
+            "temperature": 0.8,
+        }
+        req = urllib.request.Request(
+            DEEPSEEK_API_URL,
+            data=json.dumps(req_data).encode("utf-8"),
+            headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            speech = result["choices"][0]["message"]["content"].strip()
+            # 清理可能的引号
+            speech = speech.strip('"').strip("'").strip()
+            if speech and len(speech) <= 200:
+                return speech
+    except Exception as e:
+        print(f"[LLM Error] {e}", flush=True)
+    return None
+
 def ai_speak(room_id, player_id):
     """AI玩家发言 - 根据身份生成策略性发言"""
     room = rooms.get(room_id)
@@ -786,7 +849,13 @@ def ai_speak(room_id, player_id):
             if suspicious:
                 speeches.append(f"我注意到 {suspicious[0]} 的发言很实在，我比较信任。")
 
-    speech = random.choice(speeches) if speeches else "我觉得这轮可以再观察一下。"
+    # 优先尝试 LLM 生成发言
+    llm_speech = generate_llm_speech(player, room)
+    if llm_speech:
+        speech = llm_speech
+        print(f"[LLM Speech] {player.name}({player.role}): {speech}", flush=True)
+    else:
+        speech = random.choice(speeches) if speeches else "我觉得这轮可以再观察一下。"
     player.ai_speech = speech
     player.has_spoken = True
     room.add_message(player.id, speech, "speech")
