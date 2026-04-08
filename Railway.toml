@@ -1,2 +1,11 @@
 [build]
 builder = "DOCKERFILE"
+
+[deploy]
+startCommand = "python main.py"
+healthCheckPath = "/health"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+[settings]
+PORT = 8000
