@@ -1,5 +1,8 @@
-[build]
-builder = "DOCKERFILE"
+[nixpacks]
+name = "werewolf-game"
 
-[deploy]
-startCommand = "WEREWOLF_FRONTEND=/app/frontend python main.py"
+[pip]
+requirements = "requirements.txt"
+
+[start]
+cmd = "python main.py"
