@@ -418,6 +418,10 @@ def start_role_kill(room_id):
     print(f"[DEBUG] start_role_kill called for room {room_id}, phase={room.phase if room else 'N/A'}", flush=True)
     if not room or room.phase == "end":
         return
+    # 防止重复触发（多个 client_ready 只会第一次生效）
+    if room.phase != "night":
+        print(f"[DEBUG] start_role_kill skipped, phase is already {room.phase}", flush=True)
+        return
     wolves = room.get_werewolves()
     if not wolves:
         threading.Timer(1, start_role_seer, args=[room_id]).start()
@@ -1117,6 +1121,20 @@ def on_join_room(data):
         "player_id": p.id,
         "state": room.get_state(),
     }, room=room_id)
+
+@socketio.on("client_ready")
+def on_client_ready(data):
+    """客户端动画完成，通知服务器开始夜间阶段"""
+    room_id = data.get("room_id")
+    player_id = data.get("player_id")
+    room = rooms.get(room_id)
+    if not room:
+        return
+    print(f"[DEBUG] client_ready from {player_id} in room {room_id}", flush=True)
+    # 通知所有客户端夜间开始
+    socketio.emit("night_start", room.get_state(reveal_all=True), room=room_id)
+    # 服务器端触发 role_kill 流程
+    threading.Timer(1, start_role_kill, args=[room_id]).start()
 
 @socketio.on("night_action")
 def on_night_action(data):
