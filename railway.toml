@@ -1,6 +1,12 @@
-[build]
-builder = "DOCKERFILE"
+[nixpacks]
+name = "werewolf-game"
 
-[deploy]
-startCommand = "python main.py"
-environmentVariables = ["PORT=8000"]
+[pip]
+requirements = "requirements.txt"
+
+[start]
+cmd = "python main.py"
+
+[env]
+WEREWOLF_FRONTEND = "/repo/frontend"
+PORT = "8000"
