@@ -1,8 +1,0 @@
-[nixpacks]
-name = "werewolf-game"
-
-[pip]
-requirements = "requirements.txt"
-
-[start]
-cmd = "python main.py"
