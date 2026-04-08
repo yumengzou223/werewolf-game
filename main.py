@@ -385,6 +385,7 @@ def api_start(room_id):
 def start_night_phase(room_id):
     """开始夜晚"""
     room = rooms.get(room_id)
+    print(f"[DEBUG] start_night_phase called for room {room_id}, phase={room.phase if room else 'N/A'}", flush=True)
     if not room or room.phase == "end":
         return
 
@@ -414,6 +415,7 @@ def start_night_phase(room_id):
 
 def start_role_kill(room_id):
     room = rooms.get(room_id)
+    print(f"[DEBUG] start_role_kill called for room {room_id}, phase={room.phase if room else 'N/A'}", flush=True)
     if not room or room.phase == "end":
         return
     wolves = room.get_werewolves()
@@ -466,7 +468,7 @@ def start_role_seer(room_id):
         "role": "seer",
         "instruction": "预言家请选择今晚要查验的目标",
         "targets": [p.to_dict() for p in room.alive_players_except(seer.id)],
-        "state": room.get_state(),
+        "state": room.get_state(reveal_all=True),
     }, room=room_id)
 
     # AI预言家延迟决策（等狼人先完成）
