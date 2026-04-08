@@ -376,8 +376,8 @@ def api_start(room_id):
 
     room.setup_game()
     socketio.emit("game_started", room.get_state(reveal_all=True), room=room_id)
-    # 开始夜晚
-    threading.Timer(2, start_night_phase, args=[room_id]).start()
+    # 客户端负责显示角色揭示动画（3秒），服务器延迟4秒后再开始夜间流程
+    threading.Timer(4, start_night_phase, args=[room_id]).start()
     return jsonify({"ok": True})
 
 # ====================== 游戏阶段推进 ======================
@@ -1121,20 +1121,6 @@ def on_join_room(data):
         "player_id": p.id,
         "state": room.get_state(),
     }, room=room_id)
-
-@socketio.on("client_ready")
-def on_client_ready(data):
-    """客户端动画完成，通知服务器开始夜间阶段"""
-    room_id = data.get("room_id")
-    player_id = data.get("player_id")
-    room = rooms.get(room_id)
-    if not room:
-        return
-    print(f"[DEBUG] client_ready from {player_id} in room {room_id}", flush=True)
-    # 通知所有客户端夜间开始
-    socketio.emit("night_start", room.get_state(reveal_all=True), room=room_id)
-    # 服务器端触发 role_kill 流程
-    threading.Timer(1, start_role_kill, args=[room_id]).start()
 
 @socketio.on("night_action")
 def on_night_action(data):
