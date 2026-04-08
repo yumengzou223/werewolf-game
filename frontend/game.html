@@ -195,6 +195,7 @@ function onRoomState(data) {
 }
 
 function onGameStarted(data) {
+  console.log("[Werewolf] onGameStarted received, phase:", data.phase);
   gameState = data;
   const myPlayer = data.players.find(p => p.id === myPlayerId);
   const myRole = myPlayer ? myPlayer.role : null;
@@ -238,11 +239,13 @@ function showRoleReveal(myPlayer, callback) {
 }
 
 function onNightStart(data) {
+  console.log("[Werewolf] onNightStart received");
   gameState = data;
   startNightPhase(data);
 }
 
 function onRoleTurn(data) {
+  console.log("[Werewolf] onRoleTurn received", data.role, data.instruction);
   gameState = data;
   const myPlayer = gameState.players.find(p => p.id === myPlayerId);
   myRole = myPlayer ? myPlayer.role : null;
