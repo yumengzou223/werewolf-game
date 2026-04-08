@@ -253,6 +253,9 @@ class GameRoom:
 
 # ====================== Socket.IO 事件 ======================
 _FRONTEND_DIR = os.environ.get("WEREWOLF_FRONTEND", "/repo/frontend")
+print(f"[Werewolf] _FRONTEND_DIR={_FRONTEND_DIR} cwd={os.getcwd()} __file__={__file__}", flush=True)
+print(f"[Werewolf] frontend exists: {os.path.exists(_FRONTEND_DIR)} listing: {os.listdir(os.path.dirname(_FRONTEND_DIR)) if os.path.exists(os.path.dirname(_FRONTEND_DIR)) else 'N/A'}", flush=True)
+
 
 connected_sids = {}  # sid -> {room_id, player_id}
 
