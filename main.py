@@ -264,7 +264,32 @@ def index():
     try:
         return send_from_directory(_FRONTEND_DIR, "index.html")
     except Exception as e:
-        return f"Frontend not found at {_FRONTEND_DIR}. Error: {e}", 500
+        # Debug: list what's in the frontend directory
+        import traceback
+        debug_info = f"_FRONTEND_DIR={_FRONTEND_DIR} exists={os.path.exists(_FRONTEND_DIR)} "
+        if os.path.exists(_FRONTEND_DIR):
+            debug_info += f"files={os.listdir(_FRONTEND_DIR)} "
+        return f"Frontend not found. {debug_info} Error: {e}", 500
+
+@app.route("/debug")
+def debug():
+    import json
+    info = {
+        "FRONTEND_DIR": _FRONTEND_DIR,
+        "FRONTEND_DIR_exists": os.path.exists(_FRONTEND_DIR),
+        "cwd": os.getcwd(),
+        "__file__": __file__,
+    }
+    if os.path.exists(_FRONTEND_DIR):
+        info["frontend_files"] = os.listdir(_FRONTEND_DIR)
+        fe_static = os.path.join(_FRONTEND_DIR, "static")
+        if os.path.exists(fe_static):
+            info["static_files"] = os.listdir(fe_static)
+    parent = os.path.dirname(_FRONTEND_DIR)
+    info["parent_exists"] = os.path.exists(parent)
+    if os.path.exists(parent):
+        info["parent_files"] = os.listdir(parent)
+    return jsonify(info)
 
 @app.route("/health")
 def health():
@@ -1124,6 +1149,10 @@ def on_speech(data):
 # ====================== 前端页面路由 ======================
 @app.route("/game")
 def serve_game():
+    return send_from_directory(_FRONTEND_DIR, "game.html")
+
+@app.route("/game.html")
+def serve_game_html():
     return send_from_directory(_FRONTEND_DIR, "game.html")
 
 @app.route("/static/<path:filename>")
