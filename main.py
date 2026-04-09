@@ -1,6 +1,9 @@
 """
 AI 狼人杀 · 后端 (Flask + SocketIO 实时版)
 """
+from gevent import monkey
+monkey.patch_all()
+
 import os
 import json
 import re
@@ -18,7 +21,7 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend"), static_folder=None)
 CORS(app, resources={r"/*": {"origins": "*"}})
 app.config["SECRET_KEY"] = "werewolf-secret-2024"
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
