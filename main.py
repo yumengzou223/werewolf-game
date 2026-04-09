@@ -281,7 +281,7 @@ class GameRoom:
 
 
 # ====================== Socket.IO 事件 ======================
-_FRONTEND_DIR = os.environ.get("WEREWOLF_FRONTEND", "/repo/frontend")
+_FRONTEND_DIR = os.environ.get("WEREWOLF_FRONTEND", os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend"))
 print(f"[Werewolf] _FRONTEND_DIR={_FRONTEND_DIR} cwd={os.getcwd()} __file__={__file__}", flush=True)
 print(f"[Werewolf] frontend exists: {os.path.exists(_FRONTEND_DIR)} listing: {os.listdir(os.path.dirname(_FRONTEND_DIR)) if os.path.exists(os.path.dirname(_FRONTEND_DIR)) else 'N/A'}", flush=True)
 
@@ -458,6 +458,7 @@ def start_role_kill(room_id):
 
     room.phase = "role_kill"
     room.current_role_turn = "werewolf"
+    wolf = wolves[0]
     socketio.emit("role_turn", {
         "role": "werewolf",
         "instruction": "狼人请选择今晚要击杀的目标",
