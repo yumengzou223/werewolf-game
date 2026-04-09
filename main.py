@@ -21,7 +21,13 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend"), static_folder=None)
 CORS(app, resources={r"/*": {"origins": "*"}})
 app.config["SECRET_KEY"] = "werewolf-secret-2024"
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins=["https://pleasant-charisma-production-8c7e.up.railway.app", "https://werewolf-game.up.railway.app", "http://localhost:*", "*"] ,
+    async_mode="gevent",
+    logger=True,
+    engineio_logger=True,
+)
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
