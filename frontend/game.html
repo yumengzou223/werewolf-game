@@ -158,6 +158,7 @@ window.onload = function() {
   socket.on("night_start", onNightStart);
   socket.on("role_turn", onRoleTurn);
   socket.on("player_action_done", onPlayerActionDone);
+  socket.on("seer_result", onSeerResult);
   socket.on("witch_decision", onWitchDecision);
   socket.on("night_result", onNightResult);
   socket.on("day_start", onDayStart);
@@ -265,6 +266,20 @@ function onRoleTurn(data) {
 function onPlayerActionDone(data) {
   gameState = data.state;
   // 更新UI显示AI行动完成
+}
+
+function onSeerResult(data) {
+  // 预言家查验结果（私密消息，只发给预言家本人）
+  if (data.result) {
+    appendMessage({
+      name: "系统",
+      role: null,
+      role_color: "#888",
+      content: "查验结果：" + data.target + " 是 " + data.result,
+      is_me: true,
+      is_system: true
+    });
+  }
 }
 
 function onWitchDecision(data) {
