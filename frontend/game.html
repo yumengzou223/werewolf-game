@@ -134,7 +134,7 @@ window.onload = function() {
 
   document.getElementById("disp-room-id").textContent = myRoomId;
 
-  socket = io();
+  socket = io({ transports: ['polling'] });
   socket.on("connect", () => {
     const el = document.getElementById("conn-status");
     if (el) { el.textContent = "🟢 已连接"; el.style.color = "#4caf50"; }
