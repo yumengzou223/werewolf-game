@@ -151,12 +151,13 @@ class GameRoom:
         self.messages = []
 
     def get_state(self, for_sid=None, reveal_all=False):
-        """获取房间状态快照。
-        reveal_all: 向所有玩家广播所有角色信息（仅用于游戏结束或白天阶段）
-        for_sid: 只向特定玩家广播其应该知道的信息：
-          - 该玩家自己的完整角色信息
-          - 狼人同伴的角色信息（狼人互相可见）
-          - 死亡状态所有人可见（但死亡原因和角色在夜阶段不揭示）
+        """Get room state snapshot.
+
+        reveal_all: broadcast all roles to all players (only for game end or day phase)
+        for_sid: broadcast only what this player should know:
+          - The player's own complete role info
+          - Werewolf teammates visible to each other
+          - Dead status visible to all (but role not revealed at night)
         """
         my_player = None
         if for_sid:
@@ -168,8 +169,10 @@ class GameRoom:
         player_objs = []
         for p in self.players:
             is_me = (for_sid and p.sid == for_sid)
-            # 角色可见性规则：
-            # reveal_all时全揭示；自己永远可见；狼人同伴互相可见
+            # Role visibility:
+            # reveal_all: all roles revealed (day phase / game end)
+            # is_me: own role always visible
+            # werewolf: wolf teammates see each other
             show_role = reveal_all or is_me or (my_team == "werewolf" and p.role == "werewolf")
 
             player_objs.append({
@@ -183,7 +186,7 @@ class GameRoom:
                 "is_me": is_me,
             })
 
-        # 女巫是否知道今晚死的是谁（只有女巫自己可见）
+        # Witch info: only visible to witch themselves
         witch = self.get_role("witch")
         witch_info = {}
         if my_player and my_player.role == "witch" and self.night_actions.get("kill_target") and witch.alive:
@@ -467,7 +470,7 @@ def start_role_kill(room_id):
         target = random.choice(alive)
         wolf.night_target = target.name
         room.night_actions["kill_target"] = target.name
-        room.add_message(wolf.id, f"（狼人行动完成）", "system")
+        pass  # wolf action not shared
         socketio.emit("player_action_done", {
             "player_id": wolf.id,
             "action": "kill",
@@ -510,7 +513,7 @@ def start_role_seer(room_id):
         room.night_actions["seer_target"] = target.name
         result = "狼人" if target.role == "werewolf" else "好人"
         room.night_actions["seer_result"] = f"{target.name} 是 {result}"
-        room.add_message(seer.id, f"（查验结果：{target.name} 是 {result}）", "system")
+        pass  # seer check not shared
         socketio.emit("player_action_done", {
             "player_id": seer.id,
             "action": "check",
@@ -539,7 +542,7 @@ def start_role_witch(room_id):
         "kill_target": kill_target,
         "can_heal": witch.witch_heal,
         "can_poison": witch.witch_poison,
-        "targets": [p.to_dict() for p in room.get_alive_players()],
+        "targets": [p.to_dict() for p in room.alive_players_except(witch.id)],
         "state": room.get_state(for_sid=witch.sid),
     }, room=witch.sid)
 
@@ -551,7 +554,7 @@ def start_role_witch(room_id):
         if kill_t and witch.witch_heal and random.random() > 0.3:
             witch.night_target = kill_t
             room.night_actions["witch_heal"] = kill_t
-            room.add_message(witch.id, f"（女巫用解药救了{kill_t}）", "system")
+            pass  # [FIX] AI witch heal not shared
         else:
             # 不救
             room.night_actions["witch_heal"] = None
@@ -594,7 +597,7 @@ def ask_witch_poison(room_id):
             else:
                 target = random.choice(alive)
             room.night_actions["witch_poison"] = target.name
-            room.add_message(witch.id, f"（女巫对{target.name}下毒）", "system")
+            pass  # [FIX] AI witch poison not shared
         socketio.emit("player_action_done", {
             "player_id": witch.id,
             "action": "poison_done",
@@ -629,7 +632,7 @@ def resolve_night(room_id):
         if p and p.alive:
             p.alive = False
             dead_players.append(p)
-            room.add_message(p.id, f"{p.name}死亡", "system")
+            pass  # [FIX] death info only in night_result dead list
 
     room.phase = "night_result"
     socketio.emit("night_result", {
@@ -1168,7 +1171,7 @@ def on_night_action(data):
             return
         player.night_target = target_name
         room.night_actions["kill_target"] = target_name
-        room.add_message(player.id, f"（狼人选择击杀{target_name}）", "system")
+        pass  # [FIX] wolf kill not shared
         emit("action_confirmed", {"action": "kill", "target": target_name})
 
     elif room.phase == "role_seer" and player.role == "seer":
@@ -1178,7 +1181,7 @@ def on_night_action(data):
             return
         result = "狼人" if target.role == "werewolf" else "好人"
         room.night_actions["seer_result"] = f"{target_name} 是 {result}"
-        room.add_message(player.id, f"（预言家查验了{target_name}，结果是：{result}）", "system")
+        pass  # [FIX] seer human check not shared
         emit("seer_result", {"target": target_name, "result": result}, room=player.sid)
         emit("action_confirmed", {"action": "check", "result": room.night_actions["seer_result"]})
 
@@ -1188,15 +1191,20 @@ def on_night_action(data):
             kt = room.night_actions.get("kill_target")
             room.night_actions["witch_heal"] = kt
             witch.witch_heal = False
-            room.add_message(player.id, f"（女巫救了{kt}）", "system")
+            pass  # [FIX] witch heal not shared
         if target_name and witch.witch_poison:
             poison_target = room.get_player_by_name(target_name)
             if not poison_target or not poison_target.alive:
                 emit("error", {"message": "女巫不能毒已死亡玩家"})
                 return
+                # [FIX] validate poison target
+                _pt = room.get_player_by_name(target_name)
+                if not _pt or not _pt.alive:
+                    emit("error", {"message": "Cannot poison dead player"})
+                    return
             room.night_actions["witch_poison"] = target_name
             witch.witch_poison = False
-            room.add_message(player.id, f"（女巫对{target_name}下毒）", "system")
+            pass  # witch poison not shared
         emit("action_confirmed", {"action": "witch_done"})
 
 
