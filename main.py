@@ -1194,24 +1194,22 @@ def on_night_action(data):
 
     elif room.phase == "role_witch" and player.role == "witch":
         witch = player
-        if data.get("use_heal") and witch.witch_heal:
+        # 救人：action="heal" 由 witchHeal() 直接发送
+        if data.get("action") == "heal" and witch.witch_heal:
             kt = room.night_actions.get("kill_target")
-            room.night_actions["witch_heal"] = kt
-            witch.witch_heal = False
-            pass  # [FIX] witch heal not shared
-        if target_name and witch.witch_poison:
-            poison_target = room.get_player_by_name(target_name)
-            if not poison_target or not poison_target.alive:
+            if kt:
+                room.night_actions["witch_heal"] = kt
+                witch.witch_heal = False
+                emit("action_confirmed", {"action": "heal", "target": kt})
+                return
+        # 毒人
+        if data.get("target") and witch.witch_poison:
+            _pt = room.get_player_by_name(data.get("target"))
+            if not _pt or not _pt.alive:
                 emit("error", {"message": "女巫不能毒已死亡玩家"})
                 return
-                # [FIX] validate poison target
-                _pt = room.get_player_by_name(target_name)
-                if not _pt or not _pt.alive:
-                    emit("error", {"message": "Cannot poison dead player"})
-                    return
-            room.night_actions["witch_poison"] = target_name
+            room.night_actions["witch_poison"] = data.get("target_name")
             witch.witch_poison = False
-            pass  # witch poison not shared
         emit("action_confirmed", {"action": "witch_done"})
 
 
