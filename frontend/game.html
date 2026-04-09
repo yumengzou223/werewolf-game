@@ -249,8 +249,8 @@ function onNightStart(data) {
 
 function onRoleTurn(data) {
   console.log("[Werewolf] onRoleTurn received", data.role, data.instruction);
-  gameState = data;
-  const myPlayer = gameState.players.find(p => p.id === myPlayerId);
+  gameState = data.state || {};
+  const myPlayer = gameState.players ? gameState.players.find(p => p.id === myPlayerId) : null;
   myRole = myPlayer ? myPlayer.role : null;
 
   if (data.role === "werewolf") {
