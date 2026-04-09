@@ -1238,4 +1238,4 @@ def serve_static(filename):
     return send_from_directory(os.path.join(_FRONTEND_DIR, "static"), filename)
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5003)), debug=False, log=False)
+    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5003)), debug=False)
