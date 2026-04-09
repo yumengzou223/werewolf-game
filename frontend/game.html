@@ -275,7 +275,7 @@ function onSeerResult(data) {
       name: "系统",
       role: null,
       role_color: "#888",
-      content: "查验结果：" + data.target + " 是 " + data.result,
+      content: '查验结果: ' + data.target + ' 是 ' + data.result,
       is_me: true,
       is_system: true
     });
@@ -393,6 +393,9 @@ function startNightPhase(state) {
   document.getElementById("night-target-section").style.display = "none";
   document.querySelector(".all-closed-eyes").style.display = "flex";
   document.getElementById("night-instruction").textContent = "天黑请闭眼...";
+  // 夜间：浮动列表不显示任何角色颜色
+  const container = document.getElementById("player-list-float");
+  if (container) container.innerHTML = "";
 }
 
 function showWolfTurn(data) {
@@ -569,9 +572,10 @@ function showSpeaking(data) {
   document.getElementById("pk-area").style.display = "none";
 
   const card = document.getElementById("speaker-card");
-  card.innerHTML = `<div class="speaker-name" style="color:${data.role_color || '#333'}">${data.speaker_name}</div>
+  // 白天讨论阶段：所有人名字用中性色，不透露角色
+  card.innerHTML = `<div class="speaker-name" style="color:#333">${data.speaker_name}</div>
     <div class="speaker-role">${data.role_name || ''}</div>`;
-  card.className = "speaker-card " + (data.role_color ? "speaker-card-glow" : "");
+  card.className = "speaker-card ";
 
   const inputWrap = document.getElementById("speech-input-wrap");
   inputWrap.style.display = isMyTurn ? "flex" : "none";
