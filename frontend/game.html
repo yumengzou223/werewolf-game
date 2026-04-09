@@ -788,7 +788,7 @@ function appendMessage(msg, scroll = true) {
   } else {
     div.className = `msg-bubble-wrap ${isMe ? 'msg-me' : 'msg-other'}`;
     div.innerHTML = `<div class="msg-name" style="color:${roleColor}">${msg.name}</div>
-      <div class="msg-bubble" style="${isMe ? 'background:#daf' : 'background:#fff'}">
+      <div class="msg-bubble" style="${isMe ? 'background:#667eea' : 'background:rgba(255,255,255,0.15); color:#e0e0e0'}">
         ${msg.content}
       </div>`;
   }
