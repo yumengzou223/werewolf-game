@@ -483,6 +483,7 @@ body {
 }
 .pm-chip.dead { opacity: 0.35; text-decoration: line-through; }
 .pm-chip.me { border: 1px solid var(--accent); }
+.pm-pos { color: #aaa; font-weight: bold; margin-right: 2px; }
 .pm-dot { width: 7px; height: 7px; border-radius: 50%; }
 
 /* ==================== 游戏结束 ==================== */

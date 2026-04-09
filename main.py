@@ -92,6 +92,7 @@ class Player:
             "role_color": ROLES.get(self.role, {}).get("color", "") if reveal_role else "",
             "alive": self.alive,
             "is_ai": self.is_ai,
+            "position": self.position,
         }
         return d
 
@@ -714,6 +715,7 @@ def start_discussion(room_id):
         socketio.emit("speaking_start", {
             "speaker_id": speaker.id,
             "speaker_name": speaker.name,
+            "speaker_position": speaker.position,
             "role": None,
             "role_name": None,
             "role_color": "",

@@ -478,7 +478,7 @@ function renderNightTargets(targets, actionType) {
   targets.forEach(t => {
     const div = document.createElement("div");
     div.className = "player-chip";
-    div.textContent = t.name;
+    div.textContent = (t.position || "?") + "号 " + t.name;
     div.onclick = () => selectNightTarget(t.name, div, actionType);
     container.appendChild(div);
   });
@@ -573,7 +573,7 @@ function showSpeaking(data) {
 
   const card = document.getElementById("speaker-card");
   // 白天讨论阶段：所有人名字用中性色，不透露角色
-  card.innerHTML = `<div class="speaker-name" style="color:#333">${data.speaker_name}</div>
+  card.innerHTML = `<div class="speaker-name" style="color:#333">${data.speaker_position}号 ${data.speaker_name}</div>
     <div class="speaker-role">${data.role_name || ''}</div>`;
   card.className = "speaker-card ";
 
@@ -644,7 +644,7 @@ function startVotePhase(data) {
   container.innerHTML = "";
   alive.forEach(p => {
     container.innerHTML += `<div class="vote-player-chip" id="vote-${p.id}" onclick="selectVote('${p.id}', '${p.name}')">
-      <div class="vp-name">${p.name}</div>
+      <div class="vp-name">${p.position}号 ${p.name}</div>
     </div>`;
   });
 
@@ -832,7 +832,7 @@ function renderPlayersMini(players) {
   players.forEach(p => {
     const div = document.createElement("div");
     div.className = `pm-chip ${p.alive ? '' : 'dead'} ${p.id === myPlayerId ? 'me' : ''}`;
-    div.innerHTML = `<span class="pm-dot" style="background:${p.role_color || '#999'}"></span>${p.name}`;
+    div.innerHTML = `<span class="pm-dot" style="background:${p.role_color || '#999'}"></span><span class="pm-pos">${p.position}号</span> ${p.name}`;
     container.appendChild(div);
   });
 }
