@@ -458,14 +458,14 @@ def start_role_kill(room_id):
 
     room.phase = "role_kill"
     room.current_role_turn = "werewolf"
-    wolf = wolves[0]
-    socketio.emit("role_turn", {
-        "role": "werewolf",
-        "instruction": "狼人请选择今晚要击杀的目标",
-        "targets": [p.to_dict() for p in room.alive_players_except(wolf.id)],
-        "teammates": [w.id for w in wolves],
-        "state": room.get_state(for_sid=wolf.sid),
-    }, room=wolf.sid)
+    for wolf in wolves:
+        socketio.emit("role_turn", {
+            "role": "werewolf",
+            "instruction": "狼人请选择今晚要击杀的目标",
+            "targets": [p.to_dict() for p in room.alive_players_except(wolf.id)],
+            "teammates": [w.id for w in wolves],
+            "state": room.get_state(for_sid=wolf.sid),
+        }, room=wolf.sid)
 
     # AI狼人自动决策
     def ai_wolf_decide():
