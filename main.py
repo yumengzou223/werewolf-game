@@ -675,7 +675,7 @@ def start_day(room_id):
 
     socketio.emit("day_start", {
         "day": room.day,
-        "state": room.get_state(reveal_all=True),
+        "state": room.get_state(reveal_all=False),
     }, room=room_id)
 
     # 开始发言阶段
@@ -714,11 +714,11 @@ def start_discussion(room_id):
         socketio.emit("speaking_start", {
             "speaker_id": speaker.id,
             "speaker_name": speaker.name,
-            "role": speaker.role if speaker.alive else None,
-            "role_name": ROLES.get(speaker.role, {}).get("name", "") if speaker.role else None,
-            "role_color": ROLES.get(speaker.role, {}).get("color", "") if speaker.role else "",
+            "role": None,
+            "role_name": None,
+            "role_color": "",
             "timer": SPEAK_TIME,
-            "state": room.get_state(reveal_all=True),
+            "state": room.get_state(reveal_all=False),
         }, room=room_id)
 
         # AI自动发言
