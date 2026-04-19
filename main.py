@@ -97,6 +97,7 @@ class GameRoom:
         self.day = 0
         self.turn_index = 0   # 当前发言索引
         self.speaker_list = []  # 存活玩家发言顺序
+        self.awaiting_speech_for = None  # 当前等待发言的玩家ID
         self.votes = {}        # {player_id: voted_name}
         self.night_actions = {}  # 夜间结果暂存
         self.last_words_timer = None
@@ -252,6 +253,8 @@ class GameRoom:
         self.votes = {}
         self.night_actions = {}
         self.turn_index = 0
+        self.awaiting_speech_for = None
+        self._current_turn_spoken = None
         for p in self.players:
             p.vote = None
             p.night_target = None
@@ -652,69 +655,74 @@ def _run_start_day(room_id):
     socketio.sleep(3)
     socketio.start_background_task(_run_discussion, room_id)
 
+def _advance_discussion(room_id):
+    """进入下一个发言者（讨论轮次内）"""
+    room = rooms.get(room_id)
+    if not room or room.phase != "discussion":
+        return
+    alive = room.get_alive_players()
+    if room.turn_index >= len(room.speaker_list) or not alive:
+        socketio.sleep(1)
+        socketio.start_background_task(_run_vote, room_id)
+        return
+    speaker_id = room.speaker_list[room.turn_index]
+    speaker = room.get_player(speaker_id)
+    if not speaker or not speaker.alive:
+        room.turn_index += 1
+        socketio.start_background_task(_advance_discussion, room_id)
+        return
+
+    room.current_role_turn = speaker.role
+    room.awaiting_speech_for = speaker.id
+    room._current_turn_spoken = None
+    socketio.emit("speaking_start", {
+        "speaker_id": speaker.id,
+        "speaker_name": speaker.name,
+        "role": speaker.role if speaker.alive else None,
+        "role_name": ROLES.get(speaker.role, {}).get("name", "") if speaker.role else None,
+        "role_color": ROLES.get(speaker.role, {}).get("color", "") if speaker.role else "",
+        "timer": SPEAK_TIME,
+        "state": room.get_state(),
+    }, room=room_id)
+
+    if speaker.is_ai:
+        socketio.start_background_task(_ai_speak, room_id, speaker.id)
+
+    def auto_next():
+        room = rooms.get(room_id)
+        if not room or room.phase != "discussion":
+            return
+        if room._current_turn_spoken == speaker.id:
+            return
+        if room.awaiting_speech_for == speaker.id:
+            return
+        room.turn_index += 1
+        socketio.emit("speaking_end", {
+            "speaker_id": speaker.id,
+            "next_speaker_id": room.speaker_list[room.turn_index] if room.turn_index < len(room.speaker_list) else None,
+            "state": room.get_state(),
+        }, room=room_id)
+        socketio.sleep(1)
+        socketio.start_background_task(_advance_discussion, room_id)
+
+    socketio.start_background_task(auto_next)
+
 def _run_discussion(room_id):
     """讨论阶段"""
     room = rooms.get(room_id)
     if not room or room.phase == "end":
         return
-
     room.phase = "discussion"
     room.speaker_list = [p.id for p in room.get_alive_players()]
     room.turn_index = 0
     room.reset_turn_state()
-
-    def next_speaker():
-        room = rooms.get(room_id)
-        if not room or room.phase != "discussion":
-            return
-        alive = room.get_alive_players()
-        if room.turn_index >= len(room.speaker_list) or not alive:
-            socketio.sleep(1)
-            socketio.start_background_task(_run_vote, room_id)
-            return
-        speaker_id = room.speaker_list[room.turn_index]
-        speaker = room.get_player(speaker_id)
-        if not speaker or not speaker.alive:
-            room.turn_index += 1
-            socketio.start_background_task(next_speaker)
-            return
-
-        room.current_role_turn = speaker.role
-        socketio.emit("speaking_start", {
-            "speaker_id": speaker.id,
-            "speaker_name": speaker.name,
-            "role": speaker.role if speaker.alive else None,
-            "role_name": ROLES.get(speaker.role, {}).get("name", "") if speaker.role else None,
-            "role_color": ROLES.get(speaker.role, {}).get("color", "") if speaker.role else "",
-            "timer": SPEAK_TIME,
-            "state": room.get_state(),
-        }, room=room_id)
-
-        if speaker.is_ai:
-            socketio.start_background_task(_ai_speak, room_id, speaker.id)
-
-        def auto_next():
-            room = rooms.get(room_id)
-            if not room or room.phase != "discussion":
-                return
-            room.turn_index += 1
-            socketio.emit("speaking_end", {
-                "speaker_id": speaker.id,
-                "next_speaker_id": room.speaker_list[room.turn_index] if room.turn_index < len(room.speaker_list) else None,
-                "state": room.get_state(),
-            }, room=room_id)
-            socketio.sleep(1)
-            socketio.start_background_task(next_speaker)
-
-        socketio.start_background_task(auto_next)
-
-    socketio.start_background_task(next_speaker)
+    socketio.start_background_task(_advance_discussion, room_id)
 
 def _ai_speak(room_id, player_id):
     """AI玩家发言"""
     socketio.sleep(2)
     room = rooms.get(room_id)
-    if not room or room.phase != "discussion":
+    if not room or room.phase not in ("discussion", "pk_discussion"):
         return
     player = room.get_player(player_id)
     if not player or not player.alive:
@@ -750,6 +758,8 @@ def _ai_speak(room_id, player_id):
     player.ai_speech = speech
     player.has_spoken = True
     room.add_message(player.id, speech, "speech")
+    room.awaiting_speech_for = None
+    room._current_turn_spoken = player.id
 
     socketio.emit("ai_speech", {
         "player_id": player.id,
@@ -759,6 +769,17 @@ def _ai_speak(room_id, player_id):
         "speech": speech,
         "state": room.get_state(),
     }, room=room_id)
+
+    # AI发完言后，立即触发下家（不等auto_next定时器）
+    room.turn_index += 1
+    socketio.emit("speaking_end", {
+        "speaker_id": player.id,
+        "next_speaker_id": room.speaker_list[room.turn_index] if room.turn_index < len(room.speaker_list) else None,
+        "state": room.get_state(),
+    }, room=room_id)
+    socketio.sleep(1)
+    socketio.start_background_task(_advance_discussion, room_id)
+    return
 
 def _run_vote(room_id):
     """投票阶段"""
@@ -850,21 +871,88 @@ def _resolve_vote(room_id):
         _end_game(room_id, winner)
     elif len(top_voted) > 1:
         socketio.sleep(3)
-        socketio.start_background_task(_run_pk_vote, room_id, top_voted)
+        socketio.start_background_task(_run_pk_discussion, room_id, top_voted)
     else:
         socketio.sleep(3)
         socketio.start_background_task(start_night_phase, room_id)
 
-def _run_pk_vote(room_id, candidates):
+def _run_pk_discussion(room_id, candidates):
+    """PK发言阶段：平票候选人依次发言"""
+    room = rooms.get(room_id)
+    if not room:
+        return
+    room.phase = "pk_discussion"
+    room.pk_candidates = candidates
+    # 只让平票的玩家发言
+    pk_player_ids = [room.get_player_by_name(n).id for n in candidates if room.get_player_by_name(n)]
+    room.speaker_list = pk_player_ids
+    room.turn_index = 0
+    room.reset_turn_state()
+
+    socketio.emit("pk_discussion_start", {
+        "candidates": candidates,
+        "state": room.get_state(),
+    }, room=room_id)
+    socketio.sleep(1)
+    socketio.start_background_task(_advance_pk_speaker, room_id)
+
+def _advance_pk_speaker(room_id):
+    """PK发言：轮到下一个候选人发言"""
+    room = rooms.get(room_id)
+    if not room or room.phase != "pk_discussion":
+        return
+    if room.turn_index >= len(room.speaker_list):
+        # 所有候选人发言完毕，进入PK投票
+        socketio.sleep(1)
+        socketio.start_background_task(_run_pk_vote, room_id)
+        return
+    speaker_id = room.speaker_list[room.turn_index]
+    speaker = room.get_player(speaker_id)
+    if not speaker or not speaker.alive:
+        room.turn_index += 1
+        socketio.start_background_task(_advance_pk_speaker, room_id)
+        return
+
+    room.awaiting_speech_for = speaker.id
+    socketio.emit("pk_speaking_start", {
+        "speaker_id": speaker.id,
+        "speaker_name": speaker.name,
+        "role": speaker.role,
+        "role_name": ROLES.get(speaker.role, {}).get("name", "") if speaker.role else None,
+        "role_color": ROLES.get(speaker.role, {}).get("color", "") if speaker.role else "",
+        "timer": SPEAK_TIME,
+        "state": room.get_state(),
+    }, room=room_id)
+
+    if speaker.is_ai:
+        socketio.start_background_task(_ai_speak, room_id, speaker.id)
+
+    def pk_auto_next():
+        room = rooms.get(room_id)
+        if not room or room.phase != "pk_discussion":
+            return
+        if room.awaiting_speech_for == speaker.id:
+            return  # 人类还没发完，等着
+        room.turn_index += 1
+        socketio.emit("pk_speaking_end", {
+            "speaker_id": speaker.id,
+            "state": room.get_state(),
+        }, room=room_id)
+        socketio.sleep(1)
+        socketio.start_background_task(_advance_pk_speaker, room_id)
+
+    socketio.start_background_task(pk_auto_next)
+
+def _run_pk_vote(room_id):
+    """PK投票阶段"""
     room = rooms.get(room_id)
     if not room:
         return
     room.phase = "pk_vote"
-    room.pk_candidates = candidates
     room.votes = {}
 
     socketio.emit("pk_vote_start", {
-        "candidates": candidates,
+        "candidates": room.pk_candidates,
         "timer": VOTE_TIME,
         "state": room.get_state(),
     }, room=room_id)
@@ -876,7 +964,7 @@ def _run_pk_vote(room_id, candidates):
             return
         for p in room.get_alive_players():
             if p.is_ai and not room.votes.get(p.id):
-                voted = random.choice(candidates)
+                voted = random.choice(room.pk_candidates)
                 p.vote = voted
                 room.votes[p.id] = voted
                 socketio.emit("vote_cast", {
@@ -1076,22 +1164,50 @@ def on_speech(data):
     info = connected_sids.get(sid, {})
     room_id = info.get("room_id")
     room = rooms.get(room_id)
-    if not room or room.phase != "discussion":
+    if not room or room.phase not in ("discussion", "pk_discussion"):
         return
     player = room.get_player_by_sid(sid)
     if not player or not player.alive:
         return
     speech = data.get("content", "").strip()
-    if speech:
-        room.add_message(player.id, speech, "speech")
-        player.has_spoken = True
-        socketio.emit("player_speech", {
-            "player_id": player.id,
-            "player_name": player.name,
-            "role_color": ROLES.get(player.role, {}).get("color", ""),
-            "content": speech,
+    if not speech:
+        return
+
+    player.has_spoken = True
+    room.add_message(player.id, speech, "speech")
+    socketio.emit("player_speech", {
+        "player_id": player.id,
+        "player_name": player.name,
+        "role_color": ROLES.get(player.role, {}).get("color", ""),
+        "content": speech,
+        "state": room.get_state(),
+    }, room=room_id)
+
+    # 如果是人类正在等待发言，立即触发下家切换
+    if room.awaiting_speech_for != player.id:
+        return
+
+    room.awaiting_speech_for = None
+    room._current_turn_spoken = player.id
+    if room.phase == "pk_discussion":
+        # PK发言阶段：直接进入下一PK候选人
+        room.turn_index += 1
+        socketio.emit("pk_speaking_end", {
+            "speaker_id": player.id,
             "state": room.get_state(),
         }, room=room_id)
+        socketio.sleep(1)
+        socketio.start_background_task(_advance_pk_speaker, room_id)
+    else:
+        # 正常讨论阶段
+        room.turn_index += 1
+        socketio.emit("speaking_end", {
+            "speaker_id": player.id,
+            "next_speaker_id": room.speaker_list[room.turn_index] if room.turn_index < len(room.speaker_list) else None,
+            "state": room.get_state(),
+        }, room=room_id)
+        socketio.sleep(1)
+        socketio.start_background_task(_advance_discussion, room_id)
 
 @app.route("/game")
 def serve_game():
