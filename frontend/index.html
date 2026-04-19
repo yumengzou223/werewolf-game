@@ -99,7 +99,7 @@
         });
       }
 
-      location.href = `/game.html?room=${myRoomId}&pid=${myPlayerId}`;
+      location.href = `/game?room=${myRoomId}&pid=${myPlayerId}`;
     }
 
     async function joinRoom() {
@@ -122,7 +122,7 @@
       myRoomId = roomId;
       localStorage.setItem("werewolf_player", myPlayerId);
       localStorage.setItem("werewolf_room", myRoomId);
-      location.href = `/game.html?room=${myRoomId}&pid=${myPlayerId}`;
+      location.href = `/game?room=${myRoomId}&pid=${myPlayerId}`;
     }
 
     // 读取缓存
