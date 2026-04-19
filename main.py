@@ -428,19 +428,20 @@ def _run_role_kill(room_id):
         "state": room.get_state(reveal_all=True),
     }, room=room_id)
 
-    # AI狼人立即决策（同步）- 不能击杀队友
+    # AI狼人立即决策（同步）- 仅AI狼人自动决策
     wolf = wolves[0]
-    non_wolf_alive = [p for p in room.get_alive_players() if p.role != "werewolf"]
-    if non_wolf_alive:
-        target = random.choice(non_wolf_alive)
-        wolf.night_target = target.name
-        room.night_actions["kill_target"] = target.name
-        room.add_message(wolf.id, f"（狼人行动完成）", "system")
-        socketio.emit("player_action_done", {
-            "player_id": wolf.id,
-            "action": "kill",
-            "state": room.get_state(reveal_all=True),
-        }, room=room_id)
+    if wolf.is_ai:
+        non_wolf_alive = [p for p in room.get_alive_players() if p.role != "werewolf"]
+        if non_wolf_alive:
+            target = random.choice(non_wolf_alive)
+            wolf.night_target = target.name
+            room.night_actions["kill_target"] = target.name
+            room.add_message(wolf.id, f"（狼人行动完成）", "system")
+            socketio.emit("player_action_done", {
+                "player_id": wolf.id,
+                "action": "kill",
+                "state": room.get_state(reveal_all=True),
+            }, room=room_id)
 
     # 2秒后进入预言家阶段
     socketio.sleep(2)
@@ -467,22 +468,22 @@ def _run_role_seer(room_id):
         "state": room.get_state(),
     }, room=room_id)
 
-    # AI预言家立即决策（同步）
-    alive = room.alive_players_except(seer.id)
-    if alive:
-        target = random.choice(alive)
-        seer.night_target = target.name
-        room.night_actions["seer_target"] = target.name
-        result = "狼人" if target.role == "werewolf" else "好人"
-        room.night_actions["seer_result"] = f"{target.name} 是 {result}"
-        # 查验结果仅发给预言家本人（不发到公共消息记录）
-        if seer.sid:
-            socketio.emit("player_action_done", {
-                "player_id": seer.id,
-                "action": "check",
-                "result": room.night_actions["seer_result"],
-                "state": room.get_state(for_sid=seer.sid),
-            }, room=seer.sid)
+    # AI预言家立即决策（同步）—— 仅AI玩家自动决策
+    if seer.is_ai:
+        alive = room.alive_players_except(seer.id)
+        if alive:
+            target = random.choice(alive)
+            seer.night_target = target.name
+            room.night_actions["seer_target"] = target.name
+            result = "狼人" if target.role == "werewolf" else "好人"
+            room.night_actions["seer_result"] = f"{target.name} 是 {result}"
+            if seer.sid:
+                socketio.emit("player_action_done", {
+                    "player_id": seer.id,
+                    "action": "check",
+                    "result": room.night_actions["seer_result"],
+                    "state": room.get_state(for_sid=seer.sid),
+                }, room=seer.sid)
 
     # 2秒后进入女巫阶段
     socketio.sleep(2)

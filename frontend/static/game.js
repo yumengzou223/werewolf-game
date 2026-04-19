@@ -8,8 +8,10 @@ let gameState = null;
 let currentPhase = "waiting";
 let myRole = null;
 let isMyTurn = false;
+let roleBadgeShown = false;  // 身份牌每夜只显示一次
 let nightTarget = null;
 let nightPoisonTarget = null;
+let currentRoleAction = null;  // 当前夜间操作类型："kill"|"check"|"poison"
 let myVoteTarget = null;
 let selectedPKTarget = null;
 let timerInterval = null;
@@ -289,6 +291,7 @@ function onGameEnd(data) {
 
 // ========== 等待房间渲染 ==========
 function renderWaitingRoom(state) {
+  roleBadgeShown = false;  // 新游戏开始前重置
   const grid = document.getElementById("waiting-players");
   if (!grid) return;
   grid.innerHTML = "";
@@ -345,33 +348,36 @@ function startNightPhase(state) {
     document.getElementById("night-phase-label").textContent = "🌙 夜间阶段";
   }
 
-  // 显示玩家身份牌（游戏开始时）
-  const myP = (state && state.players) ? state.players.find(p => p.id === myPlayerId) : null;
-  if (myP && myP.role) {
-    const badge = document.getElementById("my-role-badge");
-    const nameEl = document.getElementById("my-role-name");
-    const hintEl = document.getElementById("my-role-hint");
-    if (badge && nameEl) {
-      nameEl.textContent = myP.role_name || myP.role;
-      nameEl.style.color = myP.role_color || "#f39c12";
-      if (hintEl) {
-        const hints = {
-          werewolf: "你的狼人同伴在等待，你今晚要击杀一名玩家",
-          seer: "今晚选择一名玩家进行查验",
-          witch: "观察狼人动静，女巫药水随时待命",
-          villager: "闭眼休息，等待天亮公布结果",
-        };
-        hintEl.textContent = hints[myP.role] || "";
+  // 身份牌仅在游戏开始后第一次进入夜间时显示一次
+  if (!roleBadgeShown) {
+    const myP = (state && state.players) ? state.players.find(p => p.id === myPlayerId) : null;
+    if (myP && myP.role) {
+      const badge = document.getElementById("my-role-badge");
+      const nameEl = document.getElementById("my-role-name");
+      const hintEl = document.getElementById("my-role-hint");
+      if (badge && nameEl) {
+        nameEl.textContent = myP.role_name || myP.role;
+        nameEl.style.color = myP.role_color || "#f39c12";
+        if (hintEl) {
+          const hints = {
+            werewolf: "你的狼人同伴在等待，你今晚要击杀一名玩家",
+            seer: "今晚选择一名玩家进行查验",
+            witch: "观察狼人动静，女巫药水随时待命",
+            villager: "闭眼休息，等待天亮公布结果",
+          };
+          hintEl.textContent = hints[myP.role] || "";
+        }
+        badge.style.display = "block";
+        roleBadgeShown = true;
+        setTimeout(() => { if (badge) badge.style.display = "none"; }, 5000);
       }
-      badge.style.display = "block";
-      // 5秒后自动隐藏
-      setTimeout(() => { if (badge) badge.style.display = "none"; }, 5000);
     }
   }
 }
 
 function showWolfTurn(data) {
   if (!gameState) return;
+  currentRoleAction = "kill";
   const myPlayer = gameState.players.find(p => p.id === myPlayerId);
   const isWolf = myPlayer && myPlayer.role === "werewolf" && myPlayer.alive;
 
@@ -404,6 +410,7 @@ function showWolfTurn(data) {
 }
 
 function showSeerTurn(data) {
+  currentRoleAction = "check";
   const myPlayer = (gameState.players || []).find(p => p.id === myPlayerId);
   const isSeer = myPlayer && myPlayer.role === "seer" && myPlayer.alive;
 
@@ -428,6 +435,7 @@ function showSeerTurn(data) {
 }
 
 function showWitchTurn(data) {
+  currentRoleAction = null;  // 女巫不使用confirmNightAction
   const myPlayer = (gameState.players || []).find(p => p.id === myPlayerId);
   const isWitch = myPlayer && myPlayer.role === "witch" && myPlayer.alive;
 
@@ -517,7 +525,8 @@ function selectPoisonTarget(name, id) {
 
 function confirmNightAction() {
   if (!nightTarget) return;
-  socket.emit("night_action", { action: "kill", target: nightTarget });
+  const action = currentRoleAction || "kill";
+  socket.emit("night_action", { action: action, target: nightTarget });
   const targetSection = document.getElementById("night-target-section");
   const closedEyes = document.querySelector(".all-closed-eyes");
   const instrEl = document.getElementById("night-instruction");
