@@ -106,27 +106,27 @@ function onRoomState(data) {
 }
 
 function onGameStarted(data) {
-  gameState = data;
+  gameState = data.state || data;
   showPage("night");
-  startNightPhase(data);
+  startNightPhase(gameState);
 }
 
 function onNightStart(data) {
-  gameState = data;
-  startNightPhase(data);
+  gameState = data.state || data;
+  startNightPhase(gameState);
 }
 
 function onRoleTurn(data) {
-  gameState = data;
+  gameState = data.state || data;
   const myPlayer = (gameState.players || []).find(p => p.id === myPlayerId);
   myRole = myPlayer ? myPlayer.role : null;
 
   if (data.role === "werewolf") {
-    showWolfTurn(data);
+    showWolfTurn(gameState);
   } else if (data.role === "seer") {
-    showSeerTurn(data);
+    showSeerTurn(gameState);
   } else if (data.role === "witch") {
-    showWitchTurn(data);
+    showWitchTurn(gameState);
   }
 }
 
@@ -343,6 +343,30 @@ function startNightPhase(state) {
   if (instruction) instruction.textContent = "天黑请闭眼...";
   if (document.getElementById("night-phase-label")) {
     document.getElementById("night-phase-label").textContent = "🌙 夜间阶段";
+  }
+
+  // 显示玩家身份牌（游戏开始时）
+  const myP = (state && state.players) ? state.players.find(p => p.id === myPlayerId) : null;
+  if (myP && myP.role) {
+    const badge = document.getElementById("my-role-badge");
+    const nameEl = document.getElementById("my-role-name");
+    const hintEl = document.getElementById("my-role-hint");
+    if (badge && nameEl) {
+      nameEl.textContent = myP.role_name || myP.role;
+      nameEl.style.color = myP.role_color || "#f39c12";
+      if (hintEl) {
+        const hints = {
+          werewolf: "你的狼人同伴在等待，你今晚要击杀一名玩家",
+          seer: "今晚选择一名玩家进行查验",
+          witch: "观察狼人动静，女巫药水随时待命",
+          villager: "闭眼休息，等待天亮公布结果",
+        };
+        hintEl.textContent = hints[myP.role] || "";
+      }
+      badge.style.display = "block";
+      // 5秒后自动隐藏
+      setTimeout(() => { if (badge) badge.style.display = "none"; }, 5000);
+    }
   }
 }
 
