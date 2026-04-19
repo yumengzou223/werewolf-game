@@ -239,7 +239,9 @@ function onAISpeech(data) {
 function onSpeakingEnd(data) {
   if (data.state) gameState = data.state;
   clearInterval(timerInterval);
-  document.getElementById("speaking-area").style.display = "none";
+  clearInterval(voteTimerInterval);
+  const el = document.getElementById("speaking-area");
+  if (el) el.style.display = "none";
   isMyTurn = false;
 }
 

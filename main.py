@@ -359,7 +359,10 @@ def api_start(room_id):
         return jsonify({"error": "至少需要4人"}), 400
 
     room.setup_game()
-    socketio.emit("game_started", room.get_state(), room=room_id)
+    # 单独给每个玩家发送能看到自己身份的游戏状态
+    for p in room.players:
+        if p.sid:
+            emit("game_started", room.get_state(for_sid=p.sid), room=p.sid)
     # 开始夜晚（在后台绿色线程中运行，避免阻塞HTTP响应）
     socketio.start_background_task(start_night_phase, room_id)
     return jsonify({"ok": True})
@@ -472,13 +475,14 @@ def _run_role_seer(room_id):
         room.night_actions["seer_target"] = target.name
         result = "狼人" if target.role == "werewolf" else "好人"
         room.night_actions["seer_result"] = f"{target.name} 是 {result}"
-        room.add_message(seer.id, f"（查验结果：{target.name} 是 {result}）", "system")
-        socketio.emit("player_action_done", {
-            "player_id": seer.id,
-            "action": "check",
-            "result": room.night_actions["seer_result"],
-            "state": room.get_state(),
-        }, room=room_id)
+        # 查验结果仅发给预言家本人（不发到公共消息记录）
+        if seer.sid:
+            emit("player_action_done", {
+                "player_id": seer.id,
+                "action": "check",
+                "result": room.night_actions["seer_result"],
+                "state": room.get_state(for_sid=seer.sid),
+            }, room=seer.sid)
 
     # 2秒后进入女巫阶段
     socketio.sleep(2)
