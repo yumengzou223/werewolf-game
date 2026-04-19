@@ -316,7 +316,7 @@ function renderWaitingRoom(state) {
   }
 
   if (addAIBtn) {
-    addAIBtn.style.display = (state.players || []).length < 6 && isOwner ? "inline-block" : "none";
+    addAIBtn.style.display = (state.players || []).length < 8 && isOwner ? "inline-block" : "none";
   }
 
   showPage("waiting");

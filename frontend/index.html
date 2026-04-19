@@ -10,18 +10,18 @@
   <div id="lobby">
     <div class="title-wrap">
       <h1 class="main-title">🐺 AI 狼人杀</h1>
-      <p class="subtitle">标准六人局 · AI 与你共同参与</p>
+      <p class="subtitle">AI 狼人杀 · 与 AI 同局</p>
     </div>
 
     <div class="panel">
       <h2>创建房间</h2>
       <input id="create-name" class="input" placeholder="你的名字" maxlength="10" />
       <div class="ai-count-row">
-        <span>AI 玩家数量：</span>
-        <button class="btn-sm" onclick="changeAI(0)">−</button>
-        <span id="ai-count">3</span>
-        <button class="btn-sm" onclick="changeAI(1)">+</button>
+        <span>游戏人数：</span>
+        <button class="btn-sm" id="btn-6p" onclick="setPlayerCount(6)">6人局</button>
+        <button class="btn-sm active" id="btn-8p" onclick="setPlayerCount(8)">8人局</button>
       </div>
+      <p class="mode-desc" id="mode-desc">8人局：3狼 1预言 1女巫 3村民</p>
       <button class="btn-primary" onclick="createRoom()">创建房间</button>
     </div>
 
@@ -34,7 +34,7 @@
       <button class="btn-primary" onclick="joinRoom()">加入</button>
     </div>
 
-    <p class="tip">💡 房主可以设置 AI 玩家数量，游戏开始后 AI 将扮演其他角色</p>
+    <p class="tip">💡 选择人数后自动匹配 AI 队友，也可建房后手动添加</p>
   </div>
 
   <button class="rules-btn" onclick="openRules()">📖 规则</button>
@@ -66,15 +66,16 @@
 
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script>
-    const API = "";
-    let socket = null;
-    let myPlayerId = null;
-    let myRoomId = null;
-    let aiCount = 3;
+    let playerCount = 8; // 默认8人局
 
-    function changeAI(delta) {
-      aiCount = Math.max(1, Math.min(5, aiCount + delta));
-      document.getElementById("ai-count").textContent = aiCount;
+    function setPlayerCount(count) {
+      playerCount = count;
+      document.getElementById('btn-6p').classList.toggle('active', count === 6);
+      document.getElementById('btn-8p').classList.toggle('active', count === 8);
+      const desc = count === 6
+        ? '6人局：2狼 1预言 1女巫 2村民'
+        : '8人局：3狼 1预言 1女巫 3村民';
+      document.getElementById('mode-desc').textContent = desc;
     }
 
     async function createRoom() {
@@ -90,7 +91,8 @@
       localStorage.setItem("werewolf_player", myPlayerId);
       localStorage.setItem("werewolf_room", myRoomId);
 
-      // 自动添加AI
+      // 自动添加AI（填满到目标人数）
+      const aiCount = playerCount - 1;
       for (let i = 0; i < aiCount; i++) {
         await fetch(`/api/room/${myRoomId}/add-ai`, {
           method: "POST",

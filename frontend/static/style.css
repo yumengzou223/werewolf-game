@@ -58,6 +58,11 @@ body {
   padding: 6px 14px; border-radius: 20px;
   font-size: 13px; cursor: pointer;
 }
+.btn-sm.active {
+  background: rgba(102,126,234,0.4);
+  border-color: #667eea;
+  color: #fff;
+}
 
 .input {
   width: 100%;
@@ -103,10 +108,12 @@ body {
 
 .ai-count-row {
   display: flex; align-items: center; gap: 12px;
-  margin-bottom: 16px; color: #fff;
+  margin-bottom: 12px; color: #fff;
 }
 .ai-count-row span { font-size: 14px; color: var(--muted); }
-#ai-count { font-size: 20px; font-weight: bold; color: var(--accent); min-width: 24px; text-align: center; }
+.mode-desc {
+  font-size: 13px; color: var(--muted); margin-bottom: 16px; text-align: center;
+}
 
 .divider {
   color: var(--muted); font-size: 13px;

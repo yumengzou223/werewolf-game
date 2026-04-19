@@ -1,9 +1,6 @@
 """
 AI 狼人杀 · 后端 (Flask + SocketIO 实时版)
 """
-from gevent import monkey
-monkey.patch_all()
-
 import os
 import json
 import re
@@ -18,18 +15,12 @@ from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 # ====================== 配置 ======================
-app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend"), static_folder=None)
+app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "werewolf", "frontend"), static_folder=None)
 CORS(app, resources={r"/*": {"origins": "*"}})
 app.config["SECRET_KEY"] = "werewolf-secret-2024"
-socketio = SocketIO(
-    app,
-    cors_allowed_origins=["https://pleasant-charisma-production-8c7e.up.railway.app", "https://werewolf-game.up.railway.app", "http://localhost:*", "*"] ,
-    async_mode="gevent",
-    logger=True,
-    engineio_logger=True,
-)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+DEEPSEEK_API_KEY = ""
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 # ====================== 角色定义 ======================
@@ -41,6 +32,7 @@ ROLES = {
 }
 
 PHASE_ORDER = ["waiting", "role_kill", "role_seer", "role_witch", "night_result", "day_result", "discussion", "vote", "pk_vote", "lynch_result", "night"]
+MAX_PLAYERS = 8
 SPEAK_TIME = 60  # 发言时间秒
 VOTE_TIME = 30   # 投票时间秒
 
@@ -92,7 +84,6 @@ class Player:
             "role_color": ROLES.get(self.role, {}).get("color", "") if reveal_role else "",
             "alive": self.alive,
             "is_ai": self.is_ai,
-            "position": self.position,
         }
         return d
 
@@ -124,7 +115,10 @@ class GameRoom:
         }
 
     def add_player(self, player):
+        if len(self.players) >= MAX_PLAYERS:
+            return False
         self.players.append(player)
+        return True
 
     def get_player(self, pid):
         return next((p for p in self.players if p.id == pid), None)
@@ -146,7 +140,13 @@ class GameRoom:
 
     def setup_game(self):
         """分配角色并开始"""
-        roles_pool = ["werewolf", "werewolf", "seer", "witch", "villager", "villager"]
+        n = len(self.players)
+        if n == 6:
+            roles_pool = ["werewolf", "werewolf", "seer", "witch", "villager", "villager"]
+        elif n >= 7:
+            roles_pool = ["werewolf", "werewolf", "werewolf", "seer", "witch", "villager", "villager", "villager"]
+        else:
+            roles_pool = ["werewolf", "seer", "witch", "villager"]
         random.shuffle(roles_pool)
         for i, p in enumerate(self.players):
             p.role = roles_pool[i % len(roles_pool)]
@@ -158,45 +158,25 @@ class GameRoom:
         self.messages = []
 
     def get_state(self, for_sid=None, reveal_all=False):
-        """Get room state snapshot.
-
-        reveal_all: broadcast all roles to all players (only for game end or day phase)
-        for_sid: broadcast only what this player should know:
-          - The player's own complete role info
-          - Werewolf teammates visible to each other
-          - Dead status visible to all (but role not revealed at night)
-        """
-        my_player = None
-        if for_sid:
-            my_player = self.get_player_by_sid(for_sid)
-
-        my_role = my_player.role if my_player else None
-        my_team = ROLES.get(my_role, {}).get("team", "") if my_player else None
-
+        """获取房间状态快照"""
         player_objs = []
         for p in self.players:
             is_me = (for_sid and p.sid == for_sid)
-            # Role visibility:
-            # reveal_all: all roles revealed (day phase / game end)
-            # is_me: own role always visible
-            # werewolf: wolf teammates see each other
-            show_role = reveal_all or is_me or (my_team == "werewolf" and p.role == "werewolf")
-
             player_objs.append({
                 "id": p.id,
                 "name": p.name,
-                "role": p.role if show_role else None,
-                "role_name": ROLES.get(p.role, {}).get("name", "") if show_role else None,
-                "role_color": ROLES.get(p.role, {}).get("color", "") if show_role else "",
+                "role": p.role if (reveal_all or is_me) else None,
+                "role_name": ROLES.get(p.role, {}).get("name", "") if (reveal_all or is_me) else None,
+                "role_color": ROLES.get(p.role, {}).get("color", "") if (reveal_all or is_me) else "",
                 "alive": p.alive,
                 "is_ai": p.is_ai,
                 "is_me": is_me,
             })
 
-        # Witch info: only visible to witch themselves
+        # 女巫是否知道今晚死的是谁
         witch = self.get_role("witch")
         witch_info = {}
-        if my_player and my_player.role == "witch" and self.night_actions.get("kill_target") and witch.alive:
+        if witch and self.night_actions.get("kill_target") and witch.alive:
             witch_info = {
                 "knows_dead": self.night_actions.get("kill_target"),
                 "can_heal": witch.witch_heal,
@@ -208,10 +188,10 @@ class GameRoom:
             "phase": self.phase,
             "day": self.day,
             "players": player_objs,
-            "messages": self.messages[-50:],
+            "messages": self.messages[-50:],  # 最近50条
             "votes": self.votes if self.phase in ["vote", "pk_vote"] else {},
             "winner": self.winner,
-            "night_actions": self.night_actions if reveal_all else {},
+            "night_actions": self.night_actions if reveal_all else {},  # 完全公开
             "current_role_turn": self.current_role_turn,
             "speech_timer": SPEAK_TIME,
             "vote_timer": VOTE_TIME,
@@ -282,48 +262,13 @@ class GameRoom:
 
 
 # ====================== Socket.IO 事件 ======================
-_FRONTEND_DIR = os.environ.get("WEREWOLF_FRONTEND", os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend"))
-print(f"[Werewolf] _FRONTEND_DIR={_FRONTEND_DIR} cwd={os.getcwd()} __file__={__file__}", flush=True)
-print(f"[Werewolf] frontend exists: {os.path.exists(_FRONTEND_DIR)} listing: {os.listdir(os.path.dirname(_FRONTEND_DIR)) if os.path.exists(os.path.dirname(_FRONTEND_DIR)) else 'N/A'}", flush=True)
-
+_FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
 
 connected_sids = {}  # sid -> {room_id, player_id}
 
 @app.route("/")
 def index():
-    try:
-        return send_from_directory(_FRONTEND_DIR, "index.html")
-    except Exception as e:
-        # Debug: list what's in the frontend directory
-        import traceback
-        debug_info = f"_FRONTEND_DIR={_FRONTEND_DIR} exists={os.path.exists(_FRONTEND_DIR)} "
-        if os.path.exists(_FRONTEND_DIR):
-            debug_info += f"files={os.listdir(_FRONTEND_DIR)} "
-        return f"Frontend not found. {debug_info} Error: {e}", 500
-
-@app.route("/debug")
-def debug():
-    import json
-    info = {
-        "FRONTEND_DIR": _FRONTEND_DIR,
-        "FRONTEND_DIR_exists": os.path.exists(_FRONTEND_DIR),
-        "cwd": os.getcwd(),
-        "__file__": __file__,
-    }
-    if os.path.exists(_FRONTEND_DIR):
-        info["frontend_files"] = os.listdir(_FRONTEND_DIR)
-        fe_static = os.path.join(_FRONTEND_DIR, "static")
-        if os.path.exists(fe_static):
-            info["static_files"] = os.listdir(fe_static)
-    parent = os.path.dirname(_FRONTEND_DIR)
-    info["parent_exists"] = os.path.exists(parent)
-    if os.path.exists(parent):
-        info["parent_files"] = os.listdir(parent)
-    return jsonify(info)
-
-@app.route("/health")
-def health():
-    return "ok", 200
+    return send_from_directory(_FRONTEND_DIR, "index.html")
 
 @app.route("/api/room/create", methods=["POST"])
 def api_create():
@@ -349,6 +294,14 @@ def api_get_room(room_id):
     reveal = room.phase in ["end", "waiting"]
     return jsonify(room.get_state(reveal_all=reveal))
 
+@app.route("/api/debug/room/<room_id>", methods=["GET"])
+def api_debug_room(room_id):
+    """调试端点：强制揭露所有角色信息（仅用于测试）"""
+    room = rooms.get(room_id)
+    if not room:
+        return jsonify({"error": "房间不存在"}), 404
+    return jsonify(room.get_state(reveal_all=True))
+
 @app.route("/api/room/<room_id>/join", methods=["POST"])
 def api_join(room_id):
     room = rooms.get(room_id)
@@ -356,13 +309,14 @@ def api_join(room_id):
         return jsonify({"error": "房间不存在"}), 404
     if room.phase != "waiting":
         return jsonify({"error": "游戏已开始"}), 400
-    if len(room.players) >= 6:
-        return jsonify({"error": "房间已满"}), 400
+    if len(room.players) >= MAX_PLAYERS:
+        return jsonify({"error": "房间已满（最多8人）"}), 400
 
     body = request.get_json() or {}
     player_name = body.get("player_name", f"玩家{len(room.players)+1}")
     player = Player(name=player_name, is_human=True)
-    room.add_player(player)
+    if not room.add_player(player):
+        return jsonify({"error": "房间已满（最多8人）"}), 400
     socketio.emit("player_joined", room.get_state(), room=room_id)
     return jsonify({"player_id": player.id, "player": player.to_dict()})
 
@@ -373,8 +327,8 @@ def api_add_ai(room_id):
         return jsonify({"error": "房间不存在"}), 404
     if room.phase != "waiting":
         return jsonify({"error": "游戏已开始"}), 400
-    if len(room.players) >= 6:
-        return jsonify({"error": "房间已满"}), 404
+    if len(room.players) >= MAX_PLAYERS:
+        return jsonify({"error": "房间已满（最多8人）"}), 404
 
     body = request.get_json() or {}
     role = body.get("role")
@@ -405,17 +359,16 @@ def api_start(room_id):
         return jsonify({"error": "至少需要4人"}), 400
 
     room.setup_game()
-    socketio.emit("game_started", room.get_state(reveal_all=True), room=room_id)
-    # 客户端负责显示角色揭示动画（3秒），服务器延迟4秒后再开始夜间流程
-    threading.Timer(4, start_night_phase, args=[room_id]).start()
+    socketio.emit("game_started", room.get_state(), room=room_id)
+    # 开始夜晚（在后台绿色线程中运行，避免阻塞HTTP响应）
+    socketio.start_background_task(start_night_phase, room_id)
     return jsonify({"ok": True})
 
 # ====================== 游戏阶段推进 ======================
 
 def start_night_phase(room_id):
-    """开始夜晚"""
+    """开始夜晚（后台运行，使用eventlet原生延迟）"""
     room = rooms.get(room_id)
-    print(f"[DEBUG] start_night_phase called for room {room_id}, phase={room.phase if room else 'N/A'}", flush=True)
     if not room or room.phase == "end":
         return
 
@@ -437,65 +390,69 @@ def start_night_phase(room_id):
 
     socketio.emit("night_start", {
         "day": room.day,
-        "state": room.get_state(),
+        "state": room.get_state(reveal_all=True),
     }, room=room_id)
 
-    # 狼人阶段
-    threading.Timer(3, start_role_kill, args=[room_id]).start()
+    # 3秒后进入狼人阶段（eventlet.sleep = 让出控制权，不阻塞）
+    socketio.sleep(3)
+    _run_role_kill(room_id)
 
-def start_role_kill(room_id):
+def _run_role_kill(room_id):
+    """执行狼人阶段（同步执行，无Timer依赖）"""
     room = rooms.get(room_id)
-    print(f"[DEBUG] start_role_kill called for room {room_id}, phase={room.phase if room else 'N/A'}", flush=True)
     if not room or room.phase == "end":
         return
-    # 防止重复触发（多个 client_ready 只会第一次生效）
-    if room.phase != "night":
-        print(f"[DEBUG] start_role_kill skipped, phase is already {room.phase}", flush=True)
-        return
+
     wolves = room.get_werewolves()
     if not wolves:
-        threading.Timer(1, start_role_seer, args=[room_id]).start()
+        socketio.sleep(1)
+        _run_role_seer(room_id)
         return
 
     room.phase = "role_kill"
     room.current_role_turn = "werewolf"
-    for wolf in wolves:
-        socketio.emit("role_turn", {
-            "role": "werewolf",
-            "instruction": "狼人请选择今晚要击杀的目标",
-            "targets": [p.to_dict() for p in room.alive_players_except(wolf.id)],
-            "teammates": [w.id for w in wolves],
-            "state": room.get_state(for_sid=wolf.sid),
-        }, room=wolf.sid)
 
-    # AI狼人自动决策
-    def ai_wolf_decide():
-        wolf = wolves[0]
-        alive = room.alive_players_except(wolf.id)
-        if not alive:
-            threading.Timer(1, start_role_seer, args=[room_id]).start()
-            return
-        target = random.choice(alive)
+    # 狼人队友名单（用于前端标识）
+    wolf_teammates = [{"id": w.id, "name": w.name} for w in wolves if w.id != wolves[0].id]
+    # 狼人击杀目标不能是队友（排除所有狼人）
+    kill_targets = [p.to_dict() for p in room.get_alive_players() if p.role != "werewolf"]
+
+    socketio.emit("role_turn", {
+        "role": "werewolf",
+        "instruction": "狼人请选择今晚要击杀的目标",
+        "teammates": wolf_teammates,
+        "targets": kill_targets,
+        "state": room.get_state(reveal_all=True),
+    }, room=room_id)
+
+    # AI狼人立即决策（同步）- 不能击杀队友
+    wolf = wolves[0]
+    non_wolf_alive = [p for p in room.get_alive_players() if p.role != "werewolf"]
+    if non_wolf_alive:
+        target = random.choice(non_wolf_alive)
         wolf.night_target = target.name
         room.night_actions["kill_target"] = target.name
-        pass  # wolf action not shared
+        room.add_message(wolf.id, f"（狼人行动完成）", "system")
         socketio.emit("player_action_done", {
             "player_id": wolf.id,
             "action": "kill",
-            "state": room.get_state(for_sid=wolf.sid),
-        }, room=wolf.sid)
-        # 狼人完成后推进到预言家
-        threading.Timer(1, start_role_seer, args=[room_id]).start()
+            "state": room.get_state(reveal_all=True),
+        }, room=room_id)
 
-    threading.Timer(5, ai_wolf_decide).start()
+    # 2秒后进入预言家阶段
+    socketio.sleep(2)
+    _run_role_seer(room_id)
 
-def start_role_seer(room_id):
+def _run_role_seer(room_id):
+    """执行预言家阶段（同步执行）"""
     room = rooms.get(room_id)
     if not room or room.phase == "end":
         return
+
     seer = room.get_role("seer")
     if not seer:
-        threading.Timer(1, start_role_witch, args=[room_id]).start()
+        socketio.sleep(1)
+        _run_role_witch(room_id)
         return
 
     room.phase = "role_seer"
@@ -504,41 +461,39 @@ def start_role_seer(room_id):
         "role": "seer",
         "instruction": "预言家请选择今晚要查验的目标",
         "targets": [p.to_dict() for p in room.alive_players_except(seer.id)],
-        "state": room.get_state(for_sid=seer.sid),
-    }, room=seer.sid)
+        "state": room.get_state(),
+    }, room=room_id)
 
-    # AI预言家延迟决策（等狼人先完成）
-    def ai_seer_decide():
-        #  Guard: 只在 seer 阶段执行，否则跳过（防止重复触发）
-        if room.phase != "role_seer":
-            return
-        alive = room.alive_players_except(seer.id)
-        if not alive:
-            threading.Timer(1, start_role_witch, args=[room_id]).start()
-            return
+    # AI预言家立即决策（同步）
+    alive = room.alive_players_except(seer.id)
+    if alive:
         target = random.choice(alive)
         seer.night_target = target.name
         room.night_actions["seer_target"] = target.name
         result = "狼人" if target.role == "werewolf" else "好人"
         room.night_actions["seer_result"] = f"{target.name} 是 {result}"
-        pass  # seer check not shared
+        room.add_message(seer.id, f"（查验结果：{target.name} 是 {result}）", "system")
         socketio.emit("player_action_done", {
             "player_id": seer.id,
             "action": "check",
             "result": room.night_actions["seer_result"],
-            "state": room.get_state(for_sid=seer.sid),
-        }, room=seer.sid)
-        threading.Timer(1, start_role_witch, args=[room_id]).start()
+            "state": room.get_state(),
+        }, room=room_id)
 
-    threading.Timer(4, ai_seer_decide).start()  # 在 seer 阶段开始后4秒触发
+    # 2秒后进入女巫阶段
+    socketio.sleep(2)
+    _run_role_witch(room_id)
 
-def start_role_witch(room_id):
+def _run_role_witch(room_id):
+    """执行女巫阶段（同步执行）"""
     room = rooms.get(room_id)
     if not room or room.phase == "end":
         return
+
     witch = room.get_role("witch")
     if not witch:
-        threading.Timer(1, resolve_night, args=[room_id]).start()
+        socketio.sleep(1)
+        _resolve_night(room_id)
         return
 
     room.phase = "role_witch"
@@ -550,73 +505,74 @@ def start_role_witch(room_id):
         "kill_target": kill_target,
         "can_heal": witch.witch_heal,
         "can_poison": witch.witch_poison,
-        "targets": [p.to_dict() for p in room.alive_players_except(witch.id)],
-        "state": room.get_state(for_sid=witch.sid),
-    }, room=witch.sid)
+        "targets": [p.to_dict() for p in room.get_alive_players()],
+        "state": room.get_state(),
+    }, room=room_id)
 
-    def ai_witch_decide():
-        if room.phase != "role_witch":
-            return
-        kill_t = room.night_actions.get("kill_target")
-        # AI女巫：随机策略
-        if kill_t and witch.witch_heal and random.random() > 0.3:
-            witch.night_target = kill_t
-            room.night_actions["witch_heal"] = kill_t
-            pass  # [FIX] AI witch heal not shared
-        else:
-            # 不救
-            room.night_actions["witch_heal"] = None
+    # AI女巫解药决策（同步）
+    kill_t = room.night_actions.get("kill_target")
+    if kill_t and witch.witch_heal and random.random() > 0.3:
+        witch.night_target = kill_t
+        room.night_actions["witch_heal"] = kill_t
+        room.add_message(witch.id, f"（女巫用解药救了{kill_t}）", "system")
         socketio.emit("player_action_done", {
             "player_id": witch.id,
             "action": "witch_done",
-            "state": room.get_state(for_sid=witch.sid),
-        }, room=witch.sid)
-        # 毒药阶段延迟
-        threading.Timer(2, ask_witch_poison, args=[room_id]).start()
+            "state": room.get_state(),
+        }, room=room_id)
+    else:
+        room.night_actions["witch_heal"] = None
 
-    threading.Timer(4, ai_witch_decide).start()
+    # 2秒后女巫选择毒药
+    socketio.sleep(2)
+    _run_witch_poison(room_id)
 
-def ask_witch_poison(room_id):
+def _run_witch_poison(room_id):
     room = rooms.get(room_id)
     if not room or room.phase == "end":
         return
+
     witch = room.get_role("witch")
     if not witch or not witch.witch_poison:
-        threading.Timer(1, resolve_night, args=[room_id]).start()
+        socketio.sleep(1)
+        _resolve_night(room_id)
         return
 
-    # 通知前端女巫选择毒药（跳过，简单处理）
-    socketio.emit("witch_decision", {
-        "kill_target": room.night_actions.get("kill_target"),
-        "can_poison": witch.witch_poison,
-        "targets": [p.to_dict() for p in room.alive_players_except(witch.id)],
-        "state": room.get_state(for_sid=witch.sid),
-    }, room=witch.sid)
+    # AI女巫毒药决策（50%概率毒狼人）
+    alive = room.alive_players_except(witch.id)
+    wolves = room.get_werewolves()
+    if alive and random.random() > 0.5:
+        if wolves:
+            target = random.choice(wolves)
+        else:
+            target = random.choice(alive)
+        room.night_actions["witch_poison"] = target.name
+        room.add_message(witch.id, f"（女巫对{target.name}下毒）", "system")
 
-    def ai_witch_poison_decide():
-        if room.phase != "role_witch":
-            return
-        alive = room.alive_players_except(witch.id)
-        wolves = room.get_werewolves()
-        # AI女巫有50%概率毒人，优先毒狼人
-        if alive and random.random() > 0.5:
-            if wolves:
-                target = random.choice(wolves)
-            else:
-                target = random.choice(alive)
-            room.night_actions["witch_poison"] = target.name
-            pass  # [FIX] AI witch poison not shared
-        socketio.emit("player_action_done", {
-            "player_id": witch.id,
-            "action": "poison_done",
-            "state": room.get_state(for_sid=witch.sid),
-        }, room=witch.sid)
-        threading.Timer(1, resolve_night, args=[room_id]).start()
+    socketio.emit("player_action_done", {
+        "player_id": witch.id,
+        "action": "poison_done",
+        "state": room.get_state(),
+    }, room=room_id)
 
-    threading.Timer(3, ai_witch_poison_decide).start()
+    # 1秒后结算夜间
+    socketio.sleep(1)
+    _resolve_night(room_id)
 
-def resolve_night(room_id):
-    """夜间结算"""
+def _resolve_night(room_id):
+    """夜间结算（同步执行）"""
+    room = rooms.get(room_id)
+    if not room or room.phase == "end":
+        return
+
+    kill_t = room.night_actions.get("kill_target")
+    heal_t = room.night_actions.get("witch_heal")
+    poison_t = room.night_actions.get("witch_poison")
+
+
+
+def _resolve_night(room_id):
+    """夜间结算（同步执行）"""
     room = rooms.get(room_id)
     if not room or room.phase == "end":
         return
@@ -626,11 +582,8 @@ def resolve_night(room_id):
     poison_t = room.night_actions.get("witch_poison")
 
     dead_names = []
-
-    # 狼人杀
     if kill_t and kill_t != heal_t:
         dead_names.append(kill_t)
-    # 女巫毒
     if poison_t:
         dead_names.append(poison_t)
 
@@ -640,26 +593,40 @@ def resolve_night(room_id):
         if p and p.alive:
             p.alive = False
             dead_players.append(p)
-            pass  # [FIX] death info only in night_result dead list
+            room.add_message(p.id, f"{p.name}（{ROLES[p.role]['name']}）死亡", "system")
 
     room.phase = "night_result"
+
+    # 广播夜间结算给所有人（不含预言家查验结果）
     socketio.emit("night_result", {
         "kill_target": kill_t,
         "healed": kill_t == heal_t if kill_t else False,
         "poison_target": poison_t,
         "dead": [p.name for p in dead_players],
-        "state": room.get_state(),
+        "dead_roles": {p.name: ROLES[p.role]["name"] for p in dead_players},
+        "seer_result": None,  # 不在广播中泄露，由后端单独发给预言家
+        "state": room.get_state(reveal_all=True),
     }, room=room_id)
 
-    # 检查胜负
+    # 单独把预言家查验结果发给预言家本人（其他玩家看不到）
+    seer = room.get_role("seer")
+    seer_result = room.night_actions.get("seer_result")
+    if seer and seer.sid and seer_result:
+        socketio.emit("seer_result_private", {
+            "seer_result": seer_result,
+            "state": room.get_state(for_sid=seer.sid),
+        }, room=seer.sid)
+
     winner = room.check_win()
     if winner:
-        threading.Timer(3, end_game, args=[room_id, winner]).start()
+        socketio.sleep(3)
+        _end_game(room_id, winner)
     else:
-        threading.Timer(4, start_day, args=[room_id]).start()
+        socketio.sleep(4)
+        socketio.start_background_task(_run_start_day, room_id)
 
-def start_day(room_id):
-    """白天开始"""
+def _run_start_day(room_id):
+    """天亮（后台运行）"""
     room = rooms.get(room_id)
     if not room or room.phase == "end":
         return
@@ -667,8 +634,6 @@ def start_day(room_id):
     room.phase = "day_result"
     room.day += 1
     room.turn_index = 0
-
-    # 构建发言顺序
     alive = room.get_alive_players()
     random.shuffle(alive)
     room.speaker_list = [p.id for p in alive]
@@ -676,13 +641,14 @@ def start_day(room_id):
 
     socketio.emit("day_start", {
         "day": room.day,
-        "state": room.get_state(reveal_all=False),
+        "state": room.get_state(),
     }, room=room_id)
 
-    # 开始发言阶段
-    threading.Timer(3, start_discussion, args=[room_id]).start()
+    socketio.sleep(3)
+    socketio.start_background_task(_run_discussion, room_id)
 
-def start_discussion(room_id):
+def _run_discussion(room_id):
+    """讨论阶段"""
     room = rooms.get(room_id)
     if not room or room.phase == "end":
         return
@@ -692,42 +658,36 @@ def start_discussion(room_id):
     room.turn_index = 0
     room.reset_turn_state()
 
-    # 依次发言
     def next_speaker():
         room = rooms.get(room_id)
         if not room or room.phase != "discussion":
             return
-
         alive = room.get_alive_players()
         if room.turn_index >= len(room.speaker_list) or not alive:
-            # 发言结束，进入投票
-            threading.Timer(1, start_vote, args=[room_id]).start()
+            socketio.sleep(1)
+            socketio.start_background_task(_run_vote, room_id)
             return
-
         speaker_id = room.speaker_list[room.turn_index]
         speaker = room.get_player(speaker_id)
         if not speaker or not speaker.alive:
             room.turn_index += 1
-            threading.Timer(1, next_speaker).start()
+            socketio.start_background_task(next_speaker)
             return
 
         room.current_role_turn = speaker.role
         socketio.emit("speaking_start", {
             "speaker_id": speaker.id,
             "speaker_name": speaker.name,
-            "speaker_position": speaker.position,
-            "role": None,
-            "role_name": None,
-            "role_color": "",
+            "role": speaker.role if speaker.alive else None,
+            "role_name": ROLES.get(speaker.role, {}).get("name", "") if speaker.role else None,
+            "role_color": ROLES.get(speaker.role, {}).get("color", "") if speaker.role else "",
             "timer": SPEAK_TIME,
-            "state": room.get_state(reveal_all=False),
+            "state": room.get_state(),
         }, room=room_id)
 
-        # AI自动发言
         if speaker.is_ai:
-            threading.Timer(2, ai_speak, args=[room_id, speaker.id]).start()
+            socketio.start_background_task(_ai_speak, room_id, speaker.id)
 
-        # 发言计时
         def auto_next():
             room = rooms.get(room_id)
             if not room or room.phase != "discussion":
@@ -738,77 +698,16 @@ def start_discussion(room_id):
                 "next_speaker_id": room.speaker_list[room.turn_index] if room.turn_index < len(room.speaker_list) else None,
                 "state": room.get_state(),
             }, room=room_id)
-            threading.Timer(1, next_speaker).start()
+            socketio.sleep(1)
+            socketio.start_background_task(next_speaker)
 
-        threading.Timer(SPEAK_TIME + 1, auto_next).start()
+        socketio.start_background_task(auto_next)
 
-    threading.Timer(1, next_speaker).start()
+    socketio.start_background_task(next_speaker)
 
-def generate_llm_speech(player, room):
-    """调用 DeepSeek LLM 生成狼人杀发言"""
-    if not DEEPSEEK_API_KEY:
-        return None
-
-    role_prompts = {
-        "werewolf": ("你是一个狼人杀游戏中的狼人。你知道其他狼人的身份。"
-                     "你的目标是在不被发现的情况下带领村民投错人。"
-                     "发言要自然，不能太明显暗示自己是狼人，也要适时甩锅给别人。"
-                     "用30-50字简短发言，符合中国狼人杀风格。"),
-        "seer": ("你是一个狼人杀游戏中的预言家。你已经查验了一些玩家的身份。"
-                 "你可以选择报信息或者保持低调。发言要符合神职人员的身份，"
-                 "逻辑清晰，不轻易暴露自己但该报信息时要报。"
-                 "用30-50字简短发言。"),
-        "witch": ("你是一个狼人杀游戏中的女巫。你有救药和毒药。"
-                  "发言要显示出你在观察局势但不过分积极参与。"
-                  "用30-50字简短发言。"),
-        "villager": ("你是一个狼人杀游戏中的村民。你没有任何特殊能力。"
-                     "你的目标是分析发言找出狼人。"
-                     "发言要显示出你在认真听、认真分析，但不要过度分析显得刻意。"
-                     "用30-50字简短发言。"),
-    }
-
-    # 收集近期发言上下文
-    recent_msgs = []
-    for m in room.messages[-8:]:
-        recent_msgs.append(f"{m['name']}：{m['content']}")
-
-    prompt_base = role_prompts.get(player.role, role_prompts["villager"])
-    context = f"当前是第{room.day}天。"
-    if recent_msgs:
-        context += f"\n近期发言：\n" + "\n".join(recent_msgs)
-    context += f"\n\n你的身份是{ROLES.get(player.role, {}).get('name', '村民')}，你是{'AI' if player.is_ai else '玩家'}。"
-    context += "请用一句话发言（30字以内），直接输出发言内容，不需要加引号或其他标记。"
-
-    try:
-        import urllib.request, json
-        req_data = {
-            "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": prompt_base},
-                {"role": "user", "content": context}
-            ],
-            "max_tokens": 100,
-            "temperature": 0.8,
-        }
-        req = urllib.request.Request(
-            DEEPSEEK_API_URL,
-            data=json.dumps(req_data).encode("utf-8"),
-            headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"},
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-            speech = result["choices"][0]["message"]["content"].strip()
-            # 清理可能的引号
-            speech = speech.strip('"').strip("'").strip()
-            if speech and len(speech) <= 200:
-                return speech
-    except Exception as e:
-        print(f"[LLM Error] {e}", flush=True)
-    return None
-
-def ai_speak(room_id, player_id):
-    """AI玩家发言 - 根据身份生成策略性发言"""
+def _ai_speak(room_id, player_id):
+    """AI玩家发言"""
+    socketio.sleep(2)
     room = rooms.get(room_id)
     if not room or room.phase != "discussion":
         return
@@ -816,84 +715,33 @@ def ai_speak(room_id, player_id):
     if not player or not player.alive:
         return
 
-    # 分析上下文
-    recent_msgs = room.messages[-5:]
-    msg_context = {m["name"]: m["content"] for m in recent_msgs}
-
     speeches = []
-
     if player.role == "werewolf":
-        # 狼人策略：装村民、甩锅、质疑他人
         wolves = room.get_werewolves()
         wolf_names = [w.name for w in wolves if w.id != player.id]
         if wolf_names:
             speeches += [
                 f"{wolf_names[0]}这个人的发言有点奇怪，大家有没有注意到？",
-                f"{wolf_names[0]}刚才说的话有点矛盾，大家怎么看？",
+                "场上信息还不够清晰，我们再观察一下。",
             ]
-        speeches += [
-            "我是村民，大家可以相信我的分析。",
-            "场上信息还不够清晰，我们再观察一下。",
-            "大家不要被狼人带节奏，要看发言逻辑。",
-            "我觉得目前最难判断的是场上沉默的人。",
-            "我们按顺序来分析，每个人的发言都值得关注。",
-        ]
-
+        speeches += ["我是村民，大家可以相信我的分析。", "大家不要被狼人带节奏。"]
     elif player.role == "seer":
-        # 预言家策略：可选择报信息或保持低调
-        seer_result = room.night_actions.get("seer_result", "") if hasattr(room, "night_actions") else ""
-        if seer_result and "狼人" in seer_result:
-            # 查验到狼人，可以选择报或不报（概率性）
-            if random.random() > 0.4:
-                target = seer_result.split(" 是 ")[0] if " 是 " in seer_result else ""
-                speeches += [
-                    f"我上一晚查了 {target}，他是狼人！大家记住！",
-                    f"我有重要信息：{target} 是狼人，请大家相信我。",
-                ]
-        elif seer_result:
-            if random.random() > 0.6:
-                target = seer_result.split(" 是 ")[0] if " 是 " in seer_result else ""
-                speeches += [
-                    f"我查了 {target}，他是好人，大家可以信任他。",
-                ]
-        speeches += [
-            "大家要注意听发言，逻辑才是关键。",
-            "现在信息还不够，我们再观察一轮。",
-            "预言家需要空间，请大家给我一点时间。",
-            "狼人一定会跳神职，大家要小心区分。",
-        ]
-
+        seer_result = room.night_actions.get("seer_result", "")
+        if seer_result and "狼人" in seer_result and random.random() > 0.4:
+            parts = seer_result.split(" 是 ")
+            if len(parts) == 2:
+                speeches.append(f"我查了 {parts[0]}，他是狼人！大家记住！")
+        speeches += ["预言家需要空间，请大家给我一点时间。", "狼人一定会跳神职，大家要小心。"]
     elif player.role == "witch":
-        speeches += [
-            "我这轮注意到了几个可疑的人，大家来讨论一下。",
-            "女巫应该保持隐匿，我在观察场上的局势。",
-            "现在场上最可疑的是发言最少的人，大家怎么看？",
-            "我们可以先投一个最可疑的人试试水。",
-        ]
-
-    else:  # villager
+        speeches += ["我这轮注意到了几个可疑的人，大家来讨论一下。", "女巫应该保持隐匿，我在观察场上局势。"]
+    else:
         speeches += [
             "我觉得应该相信预言家的判断，大家不要盲目投票。",
-            "到目前为止逻辑还不清晰，我们再听听发言。",
-            "场上信息不多，先观察一轮再说。",
-            "我认为投票要给明确的理由，不能随便投。",
             "狼人的发言往往很极端，我们要学会分辨。",
-            "各位慢的说，我在听，在分析。",
+            "场上信息不多，先观察一轮再说。",
         ]
-        # 尝试分析已有消息
-        if msg_context:
-            suspicious = [name for name, content in msg_context.items()
-                          if any(kw in content for kw in ["村民", "好人", "相信", "逻辑"]) and random.random() > 0.5]
-            if suspicious:
-                speeches.append(f"我注意到 {suspicious[0]} 的发言很实在，我比较信任。")
 
-    # 优先尝试 LLM 生成发言
-    llm_speech = generate_llm_speech(player, room)
-    if llm_speech:
-        speech = llm_speech
-        print(f"[LLM Speech] {player.name}({player.role}): {speech}", flush=True)
-    else:
-        speech = random.choice(speeches) if speeches else "我觉得这轮可以再观察一下。"
+    speech = random.choice(speeches) if speeches else "这轮可以再观察一下。"
     player.ai_speech = speech
     player.has_spoken = True
     room.add_message(player.id, speech, "speech")
@@ -907,7 +755,8 @@ def ai_speak(room_id, player_id):
         "state": room.get_state(),
     }, room=room_id)
 
-def start_vote(room_id):
+def _run_vote(room_id):
+    """投票阶段"""
     room = rooms.get(room_id)
     if not room or room.phase == "end":
         return
@@ -920,42 +769,28 @@ def start_vote(room_id):
         "state": room.get_state(),
     }, room=room_id)
 
-    # AI玩家投票 - 策略性投票
-    def ai_vote_all():
+    def ai_vote_task():
+        socketio.sleep(VOTE_TIME)
         room = rooms.get(room_id)
         if not room or room.phase != "vote":
             return
-
-        # 收集已知信息
         wolves = room.get_werewolves()
         wolf_names = [w.name for w in wolves]
+        seer_t = room.night_actions.get("seer_target")
+        seer_r = room.night_actions.get("seer_result", "")
 
         for p in room.get_alive_players():
             if p.is_ai and not p.vote:
                 alive = room.alive_players_except(p.id)
                 if not alive:
                     continue
-
                 if p.role == "werewolf":
-                    # 狼人：投非狼人，优先投神职或已暴露的预言家查验目标
                     targets = [a for a in alive if a.name not in wolf_names]
-                    if targets:
-                        # 优先投女巫/预言家（按存活顺序）
-                        voted = targets[0] if len(targets) == 1 else random.choice(targets)
-                    else:
-                        voted = random.choice(alive)
-                elif p.role == "seer":
-                    # 预言家：投被查验为狼人的
-                    seer_t = room.night_actions.get("seer_target")
-                    seer_r = room.night_actions.get("seer_result", "")
-                    if seer_t and "狼人" in seer_r:
-                        voted = next((a for a in alive if a.name == seer_t), random.choice(alive))
-                    else:
-                        voted = random.choice(alive)
+                    voted = targets[0] if len(targets) == 1 else (random.choice(targets) if targets else random.choice(alive))
+                elif p.role == "seer" and seer_t and "狼人" in seer_r:
+                    voted = next((a for a in alive if a.name == seer_t), random.choice(alive))
                 else:
-                    # 村民：随机投票（更好的策略需要记忆历史发言）
                     voted = random.choice(alive)
-
                 p.vote = voted.name
                 room.votes[p.id] = voted.name
                 socketio.emit("vote_cast", {
@@ -966,12 +801,12 @@ def start_vote(room_id):
                     "state": room.get_state(),
                 }, room=room_id)
 
-        # 投票计时
-        threading.Timer(VOTE_TIME, resolve_vote, args=[room_id]).start()
+        socketio.sleep(VOTE_TIME + 1)
+        _resolve_vote(room_id)
 
-    threading.Timer(2, ai_vote_all).start()
+    socketio.start_background_task(ai_vote_task)
 
-def resolve_vote(room_id):
+def _resolve_vote(room_id):
     room = rooms.get(room_id)
     if not room or room.phase == "end":
         return
@@ -981,47 +816,41 @@ def resolve_vote(room_id):
     max_votes = max(tally.values()) if tally else 0
     top_voted = [n for n, c in tally.items() if c == max_votes]
 
-    result_msg = ""
     dead_names = []
-
     if len(top_voted) == 1:
-        name = top_voted[0]
-        p = room.get_player_by_name(name)
+        p = room.get_player_by_name(top_voted[0])
         if p and p.alive:
-            dead_names.append(name)
-            room.add_message(p.id, f"{name} 被投票出局", "system")
-            # 猎人可以带走一人（简化处理：自动结算）
-            result_msg = f"{name}（{ROLES[p.role]['name']}）被投票出局！"
+            dead_names.append(top_voted[0])
+            room.add_message(p.id, f"{top_voted[0]} 被投票出局", "system")
     else:
-        result_msg = f"平票：{', '.join(top_voted)}，进入PK投票"
+        pass
 
     room.phase = "vote_result"
     socketio.emit("vote_result", {
-        "result": result_msg,
+        "result": f"{', '.join(top_voted)} 票死" if len(top_voted) == 1 else f"平票：{', '.join(top_voted)}",
         "tally": dict(tally),
         "dead": dead_names,
         "pk_candidates": top_voted if len(top_voted) > 1 else [],
         "state": room.get_state(reveal_all=True),
     }, room=room_id)
 
-    # 处理死亡
     for name in dead_names:
         dp = room.get_player_by_name(name)
         if dp:
             dp.alive = False
 
-    # 检查胜负
     winner = room.check_win()
     if winner:
-        threading.Timer(3, end_game, args=[room_id, winner]).start()
+        socketio.sleep(3)
+        _end_game(room_id, winner)
     elif len(top_voted) > 1:
-        # PK投票
-        threading.Timer(3, start_pk_vote, args=[room_id, top_voted]).start()
+        socketio.sleep(3)
+        socketio.start_background_task(_run_pk_vote, room_id, top_voted)
     else:
-        # 进入下一天
-        threading.Timer(3, start_night_phase, args=[room_id]).start()
+        socketio.sleep(3)
+        socketio.start_background_task(start_night_phase, room_id)
 
-def start_pk_vote(room_id, candidates):
+def _run_pk_vote(room_id, candidates):
     room = rooms.get(room_id)
     if not room:
         return
@@ -1035,29 +864,29 @@ def start_pk_vote(room_id, candidates):
         "state": room.get_state(),
     }, room=room_id)
 
-    # AI投票
-    def ai_pk_vote():
+    def ai_pk_task():
+        socketio.sleep(VOTE_TIME)
         room = rooms.get(room_id)
         if not room or room.phase != "pk_vote":
             return
         for p in room.get_alive_players():
             if p.is_ai and not room.votes.get(p.id):
-                if candidates:
-                    voted = random.choice(candidates)
-                    p.vote = voted
-                    room.votes[p.id] = voted
-                    socketio.emit("vote_cast", {
-                        "player_id": p.id,
-                        "player_name": p.name,
-                        "voted_name": voted,
-                        "votes": room.votes,
-                        "state": room.get_state(),
-                    }, room=room_id)
-        threading.Timer(VOTE_TIME, resolve_pk_vote, args=[room_id]).start()
+                voted = random.choice(candidates)
+                p.vote = voted
+                room.votes[p.id] = voted
+                socketio.emit("vote_cast", {
+                    "player_id": p.id,
+                    "player_name": p.name,
+                    "voted_name": voted,
+                    "votes": room.votes,
+                    "state": room.get_state(),
+                }, room=room_id)
+        socketio.sleep(VOTE_TIME + 1)
+        _resolve_pk_vote(room_id)
 
-    threading.Timer(2, ai_pk_vote).start()
+    socketio.start_background_task(ai_pk_task)
 
-def resolve_pk_vote(room_id):
+def _resolve_pk_vote(room_id):
     room = rooms.get(room_id)
     if not room:
         return
@@ -1087,11 +916,13 @@ def resolve_pk_vote(room_id):
 
     winner = room.check_win()
     if winner:
-        threading.Timer(2, end_game, args=[room_id, winner]).start()
+        socketio.sleep(2)
+        _end_game(room_id, winner)
     else:
-        threading.Timer(2, start_night_phase, args=[room_id]).start()
+        socketio.sleep(2)
+        socketio.start_background_task(start_night_phase, room_id)
 
-def end_game(room_id, winner):
+def _end_game(room_id, winner):
     room = rooms.get(room_id)
     if not room:
         return
@@ -1104,6 +935,7 @@ def end_game(room_id, winner):
     }, room=room_id)
 
 # ====================== Socket 事件处理 ======================
+
 
 @socketio.on("connect")
 def on_connect():
@@ -1127,7 +959,7 @@ def on_disconnect():
 
 @socketio.on("ping")
 def on_ping():
-    pass  # 保活心跳，无需响应
+    pass
 
 @socketio.on("join_room")
 def on_join_room(data):
@@ -1137,17 +969,13 @@ def on_join_room(data):
     if not room:
         emit("error", {"message": "房间不存在"})
         return
-
     p = room.get_player(player_id)
     if not p:
         emit("error", {"message": "玩家不存在"})
         return
-
     p.sid = request.sid
     connected_sids[request.sid] = {"room_id": room_id, "player_id": player_id}
     join_room(room_id)
-
-    # 发送当前状态
     emit("room_state", room.get_state(for_sid=request.sid))
     socketio.emit("player_online", {
         "player_id": p.id,
@@ -1156,7 +984,6 @@ def on_join_room(data):
 
 @socketio.on("night_action")
 def on_night_action(data):
-    """玩家夜间行动"""
     sid = request.sid
     info = connected_sids.get(sid, {})
     room_id = info.get("room_id")
@@ -1164,75 +991,71 @@ def on_night_action(data):
     if not room:
         emit("error", {"message": "房间不存在"})
         return
-
     player = room.get_player_by_sid(sid)
     if not player or not player.alive:
         emit("error", {"message": "无效玩家"})
         return
-
-    action = data.get("action")  # kill | check | heal | poison
+    action = data.get("action")
     target_name = data.get("target")
 
     if room.phase == "role_kill" and player.role == "werewolf":
-        target = room.get_player_by_name(target_name)
-        if not target or not target.alive:
-            emit("error", {"message": "不能选择已死亡玩家"})
-            return
         player.night_target = target_name
         room.night_actions["kill_target"] = target_name
-        pass  # [FIX] wolf kill not shared
-        emit("action_confirmed", {"action": "kill", "target": target_name})
+        room.add_message(player.id, f"（狼人选择击杀{target_name}）", "system")
+        emit("player_action_done", {"action": "kill", "target": target_name, "state": room.get_state()})
 
     elif room.phase == "role_seer" and player.role == "seer":
         target = room.get_player_by_name(target_name)
-        if not target or not target.alive:
-            emit("error", {"message": "预言家不能查验死亡玩家"})
-            return
-        result = "狼人" if target.role == "werewolf" else "好人"
-        room.night_actions["seer_result"] = f"{target_name} 是 {result}"
-        pass  # [FIX] seer human check not shared
-        emit("seer_result", {"target": target_name, "result": result}, room=player.sid)
-        emit("action_confirmed", {"action": "check", "result": room.night_actions["seer_result"]})
+        if target:
+            result = "狼人" if target.role == "werewolf" else "好人"
+            room.night_actions["seer_result"] = f"{target_name} 是 {result}"
+            emit("player_action_done", {"action": "check", "result": room.night_actions["seer_result"], "state": room.get_state()})
 
     elif room.phase == "role_witch" and player.role == "witch":
         witch = player
-        # 救人：action="heal" 由 witchHeal() 直接发送
-        if data.get("action") == "heal" and witch.witch_heal:
+        action_type = data.get("action")
+
+        if action_type == "heal" and witch.witch_heal:
             kt = room.night_actions.get("kill_target")
             if kt:
                 room.night_actions["witch_heal"] = kt
                 witch.witch_heal = False
-                emit("action_confirmed", {"action": "heal", "target": kt})
-                return
-        # 毒人
-        if data.get("target") and witch.witch_poison:
-            _pt = room.get_player_by_name(data.get("target"))
-            if not _pt or not _pt.alive:
-                emit("error", {"message": "女巫不能毒已死亡玩家"})
-                return
-            room.night_actions["witch_poison"] = data.get("target_name")
-            witch.witch_poison = False
-        emit("action_confirmed", {"action": "witch_done"})
+                room.add_message(player.id, f"（女巫救了{kt}）", "system")
+                emit("player_action_done", {
+                    "player_id": player.id,
+                    "action": "heal",
+                    "target": kt,
+                    "state": room.get_state(),
+                })
 
+        elif action_type == "poison" and witch.witch_poison:
+            if target_name:
+                room.night_actions["witch_poison"] = target_name
+                witch.witch_poison = False
+                room.add_message(player.id, f"（女巫对{target_name}下毒）", "system")
+                emit("player_action_done", {
+                    "player_id": player.id,
+                    "action": "poison",
+                    "target": target_name,
+                    "state": room.get_state(),
+                })
+
+        emit("action_confirmed", {"action": "witch_done"})
 
 @socketio.on("vote")
 def on_vote(data):
-    """投票"""
     sid = request.sid
     info = connected_sids.get(sid, {})
     room_id = info.get("room_id")
     room = rooms.get(room_id)
     if not room or room.phase not in ["vote", "pk_vote"]:
         return
-
     player = room.get_player_by_sid(sid)
     if not player or not player.alive:
         return
-
     voted_name = data.get("target")
     player.vote = voted_name
     room.votes[player.id] = voted_name
-
     room.add_message(player.id, f"{player.name} 投给了 {voted_name}", "system")
     socketio.emit("vote_cast", {
         "player_id": player.id,
@@ -1244,18 +1067,15 @@ def on_vote(data):
 
 @socketio.on("speech")
 def on_speech(data):
-    """玩家发言"""
     sid = request.sid
     info = connected_sids.get(sid, {})
     room_id = info.get("room_id")
     room = rooms.get(room_id)
     if not room or room.phase != "discussion":
         return
-
     player = room.get_player_by_sid(sid)
     if not player or not player.alive:
         return
-
     speech = data.get("content", "").strip()
     if speech:
         room.add_message(player.id, speech, "speech")
@@ -1268,14 +1088,8 @@ def on_speech(data):
             "state": room.get_state(),
         }, room=room_id)
 
-
-# ====================== 前端页面路由 ======================
 @app.route("/game")
 def serve_game():
-    return send_from_directory(_FRONTEND_DIR, "game.html")
-
-@app.route("/game.html")
-def serve_game_html():
     return send_from_directory(_FRONTEND_DIR, "game.html")
 
 @app.route("/static/<path:filename>")
@@ -1283,4 +1097,4 @@ def serve_static(filename):
     return send_from_directory(os.path.join(_FRONTEND_DIR, "static"), filename)
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5003)), debug=False)
+    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5003)), debug=False, log=False)
