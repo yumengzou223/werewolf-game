@@ -129,6 +129,8 @@ function onRoleTurn(data) {
     showSeerTurn(gameState);
   } else if (data.role === "witch") {
     showWitchTurn(gameState);
+  } else if (data.role === "witch_poison") {
+    showWitchPoisonTurn(gameState);
   }
 }
 
@@ -477,11 +479,37 @@ function showWitchTurn(data) {
 }
 
 function showWitchPoisonTurn(data) {
-  // 单独的毒药选择轮次（如果后端拆分了）
+  // 女巫毒药选择轮次（_run_witch_poison 触发）
   const myPlayer = (gameState.players || []).find(p => p.id === myPlayerId);
-  if (myPlayer && myPlayer.role === "witch" && myPlayer.alive) {
-    const instrEl = document.getElementById("night-instruction");
-    if (instrEl) instrEl.textContent = "是否对某人使用毒药？";
+  const isWitch = myPlayer && myPlayer.role === "witch" && myPlayer.alive;
+
+  document.getElementById("night-phase-label").textContent = "🧪 女巫请选择毒杀目标";
+  const instrEl = document.getElementById("night-instruction");
+  if (instrEl) instrEl.textContent = "是否使用毒药？";
+  const targetSection = document.getElementById("night-target-section");
+  const closedEyes = document.querySelector(".all-closed-eyes");
+  if (closedEyes) closedEyes.style.display = "none";
+  if (targetSection) targetSection.style.display = "block";
+  if (document.getElementById("night-prompt-text")) {
+    document.getElementById("night-prompt-text").textContent = "选择毒杀目标（不毒人可直接确认）";
+  }
+
+  const container = document.getElementById("night-targets");
+  if (!container) return;
+
+  if (isWitch) {
+    const alivePlayers = (data.targets || gameState.players || []).filter(p => p.alive && p.id !== myPlayerId);
+    nightPoisonTarget = null;
+    let html = `<div class="players-row-small" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:16px;">`;
+    alivePlayers.forEach(t => {
+      html += `<div class="player-chip" id="poison-${t.id}" onclick="selectPoisonTarget('${t.name}', '${t.id}')">${t.name}</div>`;
+    });
+    html += `</div>`;
+    html += `<button class="btn-secondary" style="margin-bottom:8px" onclick="confirmWitchPoison(null)">不毒人</button> `;
+    html += `<button class="btn-primary" onclick="confirmWitchPoison(nightPoisonTarget)">确认毒杀</button>`;
+    container.innerHTML = html;
+  } else {
+    container.innerHTML = '<p class="waiting-msg">女巫正在决策...</p>';
   }
 }
 
@@ -544,10 +572,12 @@ function witchHeal(target) {
 }
 
 function confirmWitchAction() {
-  socket.emit("night_action", {
-    action: "poison",
-    target: nightPoisonTarget || null,
-  });
+  // 人类女巫在毒药阶段（role_witch_poison）点击确认
+  if (nightPoisonTarget) {
+    socket.emit("night_action", { action: "poison", target: nightPoisonTarget });
+  } else {
+    socket.emit("night_action", { action: "skip_poison" });
+  }
   const targetSection = document.getElementById("night-target-section");
   const closedEyes = document.querySelector(".all-closed-eyes");
   const instrEl = document.getElementById("night-instruction");
@@ -557,6 +587,22 @@ function confirmWitchAction() {
   nightPoisonTarget = null;
   nightTarget = null;
   showToast("🧪 女巫决策已确认");
+}
+
+function confirmWitchPoison(targetName) {
+  // 专门的毒药确认函数（来自 witch_poison 轮次）
+  // targetName: 玩家名字（来自 onclick），null表示点"不毒人"按钮
+  const actualTarget = targetName || nightPoisonTarget;
+  if (actualTarget) {
+    socket.emit("night_action", { action: "poison", target: actualTarget });
+    showToast("☠️ 毒药已使用！");
+  } else {
+    socket.emit("night_action", { action: "skip_poison" });
+    showToast("🧪 跳过毒药");
+  }
+  const targetSection = document.getElementById("night-target-section");
+  if (targetSection) targetSection.style.display = "none";
+  nightPoisonTarget = null;
 }
 
 // ========== 夜间结果页 ==========

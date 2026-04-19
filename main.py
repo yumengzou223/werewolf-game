@@ -416,39 +416,39 @@ def _run_role_kill(room_id):
         return
 
     room.phase = "role_kill"
-    room.current_role_turn = "werewolf"
 
-    # 狼人队友名单（用于前端标识）
-    wolf_teammates = [{"id": w.id, "name": w.name} for w in wolves if w.id != wolves[0].id]
-    # 狼人击杀目标不能是队友（排除所有狼人）
-    kill_targets = [p.to_dict() for p in room.get_alive_players() if p.role != "werewolf"]
+    # 检查是否有人类狼人需要操作
+    human_wolf = next((w for w in wolves if not w.is_ai), None)
 
-    socketio.emit("role_turn", {
-        "role": "werewolf",
-        "instruction": "狼人请选择今晚要击杀的目标",
-        "teammates": wolf_teammates,
-        "targets": kill_targets,
-        "state": room.get_state(reveal_all=True),
-    }, room=room_id)
-
-    # AI狼人立即决策（同步）- 仅AI狼人自动决策
-    wolf = wolves[0]
-    if wolf.is_ai:
+    if human_wolf:
+        # 有人类狼人，等待其操作
+        room.current_role_turn = "werewolf"
+        wolf_teammates = [{"id": w.id, "name": w.name} for w in wolves if w.id != human_wolf.id]
+        kill_targets = [p.to_dict() for p in room.get_alive_players() if p.role != "werewolf"]
+        socketio.emit("role_turn", {
+            "role": "werewolf",
+            "instruction": "狼人请选择今晚要击杀的目标",
+            "teammates": wolf_teammates,
+            "targets": kill_targets,
+            "state": room.get_state(reveal_all=True),
+        }, room=room_id)
+        # 人类狼人发 night_action 后端会处理
+    else:
+        # 全是AI狼人，立即决策
+        room.current_role_turn = "werewolf"
         non_wolf_alive = [p for p in room.get_alive_players() if p.role != "werewolf"]
         if non_wolf_alive:
             target = random.choice(non_wolf_alive)
-            wolf.night_target = target.name
+            wolves[0].night_target = target.name
             room.night_actions["kill_target"] = target.name
-            room.add_message(wolf.id, f"（狼人行动完成）", "system")
+            room.add_message(wolves[0].id, f"（狼人行动完成）", "system")
             socketio.emit("player_action_done", {
-                "player_id": wolf.id,
+                "player_id": wolves[0].id,
                 "action": "kill",
                 "state": room.get_state(reveal_all=True),
             }, room=room_id)
-
-    # 2秒后进入预言家阶段
-    socketio.sleep(2)
-    _run_role_seer(room_id)
+        socketio.sleep(1)
+        _run_role_seer(room_id)
 
 def _run_role_seer(room_id):
     """执行预言家阶段（同步执行）"""
@@ -517,25 +517,27 @@ def _run_role_witch(room_id):
         "state": room.get_state(),
     }, room=room_id)
 
-    # AI女巫解药决策（同步）
-    kill_t = room.night_actions.get("kill_target")
-    if kill_t and witch.witch_heal and random.random() > 0.3:
-        witch.night_target = kill_t
-        room.night_actions["witch_heal"] = kill_t
-        room.add_message(witch.id, f"（女巫用解药救了{kill_t}）", "system")
-        socketio.emit("player_action_done", {
-            "player_id": witch.id,
-            "action": "witch_done",
-            "state": room.get_state(),
-        }, room=room_id)
-    else:
-        room.night_actions["witch_heal"] = None
-
-    # 2秒后女巫选择毒药
-    socketio.sleep(2)
-    _run_witch_poison(room_id)
+    # 仅AI女巫自动决策解药
+    if witch.is_ai:
+        kill_t = room.night_actions.get("kill_target")
+        if kill_t and witch.witch_heal and random.random() > 0.3:
+            witch.night_target = kill_t
+            room.night_actions["witch_heal"] = kill_t
+            room.add_message(witch.id, f"（女巫用解药救了{kill_t}）", "system")
+            socketio.emit("player_action_done", {
+                "player_id": witch.id,
+                "action": "witch_done",
+                "state": room.get_state(),
+            }, room=room_id)
+        else:
+            room.night_actions["witch_heal"] = None
+        # AI女巫立即进入毒药阶段
+        socketio.sleep(1)
+        _run_witch_poison(room_id)
+    # 人类女巫：等待 on_night_action 处理
 
 def _run_witch_poison(room_id):
+    """女巫毒药阶段"""
     room = rooms.get(room_id)
     if not room or room.phase == "end":
         return
@@ -546,26 +548,34 @@ def _run_witch_poison(room_id):
         _resolve_night(room_id)
         return
 
-    # AI女巫毒药决策（50%概率毒狼人）
-    alive = room.alive_players_except(witch.id)
-    wolves = room.get_werewolves()
-    if alive and random.random() > 0.5:
-        if wolves:
-            target = random.choice(wolves)
+    if not witch.is_ai:
+        # 人类女巫：通知前端显示毒药选择
+        room.current_role_turn = "witch_poison"
+        socketio.emit("role_turn", {
+            "role": "witch_poison",
+            "instruction": "女巫请选择要毒的玩家，或跳过",
+            "targets": [p.to_dict() for p in room.alive_players_except(witch.id)],
+            "state": room.get_state(),
+        }, room=room_id)
+    else:
+        # AI女巫毒药决策（50%概率毒狼人）
+        alive = room.alive_players_except(witch.id)
+        wolves = room.get_werewolves()
+        if alive and random.random() > 0.5:
+            target = random.choice(wolves) if wolves else random.choice(alive)
+            room.night_actions["witch_poison"] = target.name
+            room.add_message(witch.id, f"（女巫对{target.name}下毒）", "system")
         else:
-            target = random.choice(alive)
-        room.night_actions["witch_poison"] = target.name
-        room.add_message(witch.id, f"（女巫对{target.name}下毒）", "system")
+            room.night_actions["witch_poison"] = None
 
-    socketio.emit("player_action_done", {
-        "player_id": witch.id,
-        "action": "poison_done",
-        "state": room.get_state(),
-    }, room=room_id)
-
-    # 1秒后结算夜间
-    socketio.sleep(1)
-    _resolve_night(room_id)
+        socketio.emit("player_action_done", {
+            "player_id": witch.id,
+            "action": "poison_done",
+            "state": room.get_state(),
+        }, room=room_id)
+        # AI女巫立即结算
+        socketio.sleep(1)
+        _resolve_night(room_id)
 
 def _resolve_night(room_id):
     """夜间结算（同步执行）"""
@@ -1096,6 +1106,8 @@ def on_night_action(data):
         room.night_actions["kill_target"] = target_name
         room.add_message(player.id, f"（狼人选择击杀{target_name}）", "system")
         emit("player_action_done", {"action": "kill", "target": target_name, "state": room.get_state()})
+        # 人类狼人操作完成后，立即进入预言家阶段
+        socketio.start_background_task(_run_role_seer, room_id)
 
     elif room.phase == "role_seer" and player.role == "seer":
         target = room.get_player_by_name(target_name)
@@ -1103,6 +1115,8 @@ def on_night_action(data):
             result = "狼人" if target.role == "werewolf" else "好人"
             room.night_actions["seer_result"] = f"{target_name} 是 {result}"
             emit("player_action_done", {"action": "check", "result": room.night_actions["seer_result"], "state": room.get_state()})
+        # 人类预言家操作完成后，立即进入女巫阶段
+        socketio.start_background_task(_run_role_witch, room_id)
 
     elif room.phase == "role_witch" and player.role == "witch":
         witch = player
@@ -1120,6 +1134,9 @@ def on_night_action(data):
                     "target": kt,
                     "state": room.get_state(),
                 })
+            # 人类女巫用解药后，进入毒药阶段
+            socketio.start_background_task(_run_witch_poison, room_id)
+            return
 
         elif action_type == "poison" and witch.witch_poison:
             if target_name:
@@ -1132,6 +1149,15 @@ def on_night_action(data):
                     "target": target_name,
                     "state": room.get_state(),
                 })
+            # 人类女巫毒药决策完成，进入夜间结算
+            socketio.start_background_task(_resolve_night, room_id)
+            return
+
+        elif action_type == "skip_poison":
+            # 人类女巫选择不毒人
+            room.night_actions["witch_poison"] = None
+            socketio.start_background_task(_resolve_night, room_id)
+            return
 
         emit("action_confirmed", {"action": "witch_done"})
 
