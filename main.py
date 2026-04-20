@@ -15,7 +15,7 @@ from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 # ====================== 配置 ======================
-app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "werewolf", "frontend"), static_folder=None)
+app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend"), static_folder=None)
 CORS(app, resources={r"/*": {"origins": "*"}})
 app.config["SECRET_KEY"] = "werewolf-secret-2024"
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
@@ -265,7 +265,7 @@ class GameRoom:
 
 
 # ====================== Socket.IO 事件 ======================
-_FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
+_FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")
 
 connected_sids = {}  # sid -> {room_id, player_id}
 
