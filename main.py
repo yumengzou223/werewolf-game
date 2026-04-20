@@ -1239,6 +1239,10 @@ def on_speech(data):
 def serve_game():
     return send_from_directory(_FRONTEND_DIR, "game.html")
 
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
 @app.route("/static/<path:filename>")
 def serve_static(filename):
     return send_from_directory(os.path.join(_FRONTEND_DIR, "static"), filename)
