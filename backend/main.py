@@ -624,8 +624,7 @@ def _resolve_night(room_id, token):
         "healed": (kill_t is not None and kill_t == heal_t),
         "poison_target": poison_t,
         "dead": [p.name for p in dead_players],
-        "dead_roles": {p.name: ROLES[p.role]["name"] for p in dead_players},
-        "state": room.get_state(reveal_all=True),
+        "state": room.get_state(reveal_all=False),
     }, room=room_id)
 
     socketio.sleep(1)
@@ -1606,10 +1605,10 @@ def on_night_action(data):
     if room.phase == "role_kill" and player.role == "werewolf":
         room.night_actions["kill_target"] = target_name
         emit("action_confirmed", {"action": "kill", "target": target_name})
-        # 只通知狼人队友，不广播到公屏
+        # 通知所有狼人队友（包含操作者自己）
         wolves = room.get_werewolves()
         for w in wolves:
-            if w.sid and w.id != player.id:
+            if w.sid:
                 socketio.emit("wolf_teammate_action", {
                     "player_name": player.name,
                     "target": target_name,
@@ -1774,6 +1773,16 @@ def on_vote(data):
         "votes": dict(room.votes),
         "state": room.get_state(),
     }, room=room_id)
+
+    # 狼人队友之间互发投票情报（只有狼人能看到其他狼人的票）
+    if player.role == "werewolf":
+        wolves = room.get_werewolves()
+        for w in wolves:
+            if w.sid:
+                socketio.emit("wolf_vote", {
+                    "player_name": player.name,
+                    "voted_name": voted_name,
+                }, room=w.sid)
 
 
 @socketio.on("wolf_chat")

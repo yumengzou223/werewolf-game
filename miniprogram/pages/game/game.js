@@ -124,6 +124,7 @@ Page({
     socket.on('role_turn', d => this._onRoleTurn(d))
     socket.on('action_confirmed', d => this._onActionConfirmed(d))
     socket.on('wolf_teammate_action', d => this._onWolfTeammateAction(d))
+    socket.on('wolf_vote', d => this._onWolfVote(d))
     socket.on('seer_result_private', d => this._onSeerResultPrivate(d))
     socket.on('night_result', d => this._onNightResult(d))
     socket.on('last_words_start', d => this._onLastWordsStart(d))
@@ -307,12 +308,16 @@ Page({
   },
 
   _onWolfTeammateAction(data) {
-    this._toast(`🐺 ${data.player_name} 已选择击杀 ${data.target}`)
+    this._toast(`🐺 队友 ${data.player_name} 选择击杀 ${data.target}`)
     const targets = this.data.nightTargets.map(t => ({
       ...t,
       isTeammateSelected: t.name === data.target ? true : t.isTeammateSelected,
     }))
     this.setData({ nightTargets: targets })
+  },
+
+  _onWolfVote(data) {
+    this._toast(`🐺 队友 ${data.player_name} 投了 ${data.voted_name}`)
   },
 
   _onSeerResultPrivate(data) {
