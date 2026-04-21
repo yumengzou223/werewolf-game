@@ -1,6 +1,6 @@
 App({
   globalData: {
-    serverUrl: 'http://192.168.1.4:5003',
+    serverUrl: 'https://pleasant-charisma-production-8c7e.up.railway.app',
     roomId: null,
     playerId: null,
     playerName: null,
