@@ -1,0 +1,28 @@
+page {
+  background: #0f0f1a;
+  color: #e0e0e0;
+  font-family: -apple-system, "PingFang SC", sans-serif;
+}
+.btn-primary {
+  display: block;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  border: none;
+  padding: 28rpx 64rpx;
+  border-radius: 100rpx;
+  font-size: 32rpx;
+  text-align: center;
+  box-shadow: 0 8rpx 30rpx rgba(102,126,234,0.4);
+}
+.btn-primary[disabled] { opacity: 0.4; }
+.btn-secondary {
+  display: block;
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  border: 1rpx solid rgba(255,255,255,0.2);
+  padding: 20rpx 48rpx;
+  border-radius: 100rpx;
+  font-size: 28rpx;
+  text-align: center;
+}
+.muted { color: #888; }

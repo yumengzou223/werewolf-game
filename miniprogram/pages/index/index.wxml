@@ -1,0 +1,21 @@
+<view class="container">
+  <view class="title-wrap">
+    <text class="main-title">🐺</text>
+    <text class="game-title">AI 狼人杀</text>
+    <text class="subtitle">智能对战 · 实时联机</text>
+  </view>
+
+  <view class="panel">
+    <text class="panel-title">你的名字</text>
+    <input class="input" placeholder="输入昵称" value="{{playerName}}" bindinput="onNameInput" maxlength="8" />
+
+    <button class="btn-primary" bindtap="createRoom" disabled="{{!playerName}}">创建房间</button>
+
+    <view class="divider">— 或者加入已有房间 —</view>
+
+    <input class="input" placeholder="输入房间号" value="{{joinRoomId}}" bindinput="onRoomIdInput" maxlength="8" />
+    <button class="btn-secondary" bindtap="joinRoom" disabled="{{!playerName || !joinRoomId}}">加入房间</button>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading-tip">连接中...</view>
+</view>

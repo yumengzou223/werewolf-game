@@ -1,0 +1,4 @@
+{
+  "description": "是否允许微信索引",
+  "rules": [{"action": "allow", "page": "*"}]
+}

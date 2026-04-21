@@ -1,0 +1,240 @@
+<view class="game-wrap">
+
+  <!-- Toast -->
+  <view class="toast {{toastShow ? 'show' : ''}}" >{{toastMsg}}</view>
+
+  <!-- ===== 等待房间 ===== -->
+  <view wx:if="{{view === 'waiting'}}" class="page-waiting">
+    <view class="room-header">
+      <text class="conn-dot {{connected ? 'green' : 'red'}}">{{connected ? '🟢' : '🔴'}}</text>
+      <text class="room-id-box">房间号：{{myRoomId}}</text>
+      <button class="btn-sm" bindtap="copyRoomId">复制</button>
+    </view>
+    <view class="players-grid">
+      <view wx:for="{{players}}" wx:key="id" class="player-slot">
+        <view class="player-avatar" style="background:{{item.role_color || '#95a5a6'}}">{{item.name.slice(0,1)}}</view>
+        <text class="player-name">{{item.name}}{{item.is_me ? ' (我)' : ''}}</text>
+        <text class="player-badge">{{item.is_ai ? '🤖' : '👤'}}</text>
+      </view>
+    </view>
+    <view class="waiting-actions">
+      <button class="btn-secondary" bindtap="addAI">+ 添加AI</button>
+      <button class="btn-primary" bindtap="startGame" disabled="{{players.length < 4}}">开始游戏</button>
+    </view>
+  </view>
+
+  <!-- ===== 夜间阶段 ===== -->
+  <view wx:if="{{view === 'night'}}" class="page-night">
+    <!-- 角色提示弹窗 -->
+    <view wx:if="{{showRoleBadge}}" class="role-badge-overlay">
+      <view class="role-badge-card">
+        <text class="rbl">你的身份</text>
+        <text class="rbn" style="color:{{roleBadgeColor}}">{{roleBadgeName}}</text>
+        <text class="rbh">{{roleBadgeHint}}</text>
+      </view>
+    </view>
+
+    <view class="night-overlay">
+      <text class="phase-label">{{nightPhaseLabel}}</text>
+      <text class="night-instr">{{nightInstruction}}</text>
+
+      <!-- 闭眼状态 -->
+      <view wx:if="{{showClosedEyes}}" class="closed-eyes">
+        <text class="eyes-emoji">🙈 🙈</text>
+        <text class="muted">所有人请闭眼</text>
+      </view>
+
+      <!-- 目标选择 -->
+      <view wx:if="{{showNightTargets}}" class="target-section">
+        <text class="prompt-text">{{nightPromptText}}</text>
+        <view class="players-row">
+          <view
+            wx:for="{{nightTargets}}" wx:key="id"
+            class="player-chip {{item.isTeammate ? 'wolf-teammate' : ''}} {{item.isTeammateSelected ? 'teammate-selected' : ''}} {{nightTarget === item.name ? 'selected' : ''}}"
+            bindtap="selectNightTarget"
+            data-name="{{item.name}}"
+            data-is-teammate="{{item.isTeammate}}"
+          >{{item.isTeammate ? '🐺 ' : ''}}{{item.name}}</view>
+        </view>
+        <button class="btn-primary" disabled="{{!nightTarget}}" bindtap="confirmNightAction">确认</button>
+      </view>
+
+      <!-- 女巫面板 -->
+      <view wx:if="{{showWitchPanel}}" class="witch-panel">
+        <view wx:if="{{witchKillTarget && canHeal}}" class="witch-section">
+          <text class="witch-label">💧 解药（可救 {{witchKillTarget}}）</text>
+          <button class="btn-witch-heal" disabled="{{witchHealDone}}" bindtap="doWitchHeal">救人：{{witchKillTarget}}</button>
+          <button class="btn-witch-skip" disabled="{{witchHealDone}}" bindtap="skipWitchHeal">不救</button>
+        </view>
+        <view wx:elif="{{!witchKillTarget}}">
+          <text class="witch-label muted">今晚无人被击杀</text>
+        </view>
+        <view wx:elif="{{!canHeal}}">
+          <text class="witch-label muted">解药已用尽</text>
+        </view>
+
+        <view wx:if="{{canPoison}}" class="witch-section">
+          <text class="witch-label">☠️ 毒药（选择毒杀目标，可不用）</text>
+          <view class="players-row">
+            <view
+              wx:for="{{witchPoisonTargets}}" wx:key="id"
+              class="player-chip {{witchPoisonTarget === item.name ? 'selected' : ''}}"
+              bindtap="selectPoison"
+              data-name="{{item.name}}"
+            >{{item.name}}</view>
+          </view>
+        </view>
+        <view wx:else><text class="witch-label muted">毒药已用尽</text></view>
+
+        <button class="btn-primary" style="margin-top:24rpx" bindtap="confirmWitch">确认</button>
+      </view>
+
+      <!-- 等待其他角色 -->
+      <view wx:if="{{showNightWaiting}}" class="waiting-msg">
+        <text>{{nightWaitingMsg}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ===== 夜间结果 ===== -->
+  <view wx:if="{{view === 'night-result'}}" class="page-night">
+    <view class="night-result-card">
+      <text class="result-title">🌅 天亮了</text>
+      <view wx:if="{{nightDead.length > 0}}">
+        <text class="dead-label">昨夜死亡：</text>
+        <view wx:for="{{nightDead}}" wx:key="*this" class="dead-chip">
+          <text>{{item}}</text>
+          <text wx:if="{{nightDeadRoles[item]}}" style="color:#e74c3c"> ({{nightDeadRoles[item]}})</text>
+        </view>
+      </view>
+      <view wx:else>
+        <text class="no-dead">🕊️ 今夜平安，无人死亡</text>
+      </view>
+      <text wx:if="{{nightHealed}}" class="healed-tip">💧 女巫今晚用解药救了人</text>
+    </view>
+  </view>
+
+  <!-- ===== 白天阶段 ===== -->
+  <view wx:if="{{view === 'day'}}" class="page-day">
+    <view class="day-header">
+      <text class="day-badge">第{{dayNum}}天</text>
+      <text class="phase-badge">{{phaseBadge}}</text>
+    </view>
+
+    <!-- 死亡揭示 -->
+    <view wx:if="{{showDayDeadReveal}}" class="dead-reveal">
+      <text class="vote-result-text">{{voteResultText}}</text>
+      <view wx:for="{{voteDeadList}}" wx:key="name" class="dead-chip">
+        <text>{{item.name}}</text>
+        <text wx:if="{{item.role}}" style="color:#e74c3c"> ({{item.role}})</text>
+      </view>
+      <text wx:if="{{pkHint}}" class="pk-hint">{{pkHint}}</text>
+    </view>
+
+    <!-- 发言区 -->
+    <view wx:if="{{showSpeakingArea}}" class="speaking-area">
+      <view class="speaking-header">
+        <text class="speaker-name">{{currentSpeakerName}}</text>
+        <view class="timer-wrap">
+          <view class="timer-bar" style="width:{{timerPct}}%;background:{{timerSeconds <= 10 ? '#e74c3c' : '#4caf50'}}"></view>
+          <text class="timer-num" style="color:{{timerSeconds <= 10 ? '#e74c3c' : '#aaa'}}">{{timerSeconds}}</text>
+        </view>
+      </view>
+      <text class="speech-progress muted">{{speechProgress}}</text>
+      <view wx:if="{{isMyTurn}}" class="speech-input-wrap">
+        <textarea class="speech-input" placeholder="输入你的发言..." value="{{speechContent}}" bindinput="onSpeechInput" maxlength="200" />
+        <button class="btn-primary" bindtap="sendSpeech">发言</button>
+      </view>
+    </view>
+
+    <!-- 投票区 -->
+    <view wx:if="{{showVoteArea}}" class="vote-area">
+      <text class="vote-title">🗳️ 投票阶段 — 选择要投票的玩家</text>
+      <view class="players-row">
+        <view
+          wx:for="{{voteCandidates}}" wx:key="id"
+          class="vote-chip {{voteTarget === item.name ? 'selected' : ''}} {{item.topVoted ? 'top-voted' : ''}}"
+          bindtap="selectVote"
+          data-name="{{item.name}}"
+          data-id="{{item.id}}"
+        >
+          <text class="vp-name">{{item.name}}</text>
+          <text wx:if="{{item.tally}}" class="vp-tally">{{item.tally}}票</text>
+        </view>
+      </view>
+      <button wx:if="{{voteTarget && !voted}}" class="btn-primary" bindtap="sendVote">确认投票</button>
+      <text wx:if="{{voted}}" class="voted-confirm">✅ 已投给 {{voteTarget}}</text>
+      <view class="vote-timer-wrap">
+        <view class="timer-bar" style="width:{{voteTimerPct}}%;background:#e74c3c"></view>
+        <text class="timer-num muted">{{voteTimerSeconds}}</text>
+      </view>
+    </view>
+
+    <!-- PK投票区 -->
+    <view wx:if="{{showPKArea}}" class="vote-area">
+      <text class="vote-title">⚔️ PK投票</text>
+      <view class="players-row">
+        <view
+          wx:for="{{pkCandidates}}" wx:key="*this"
+          class="pk-chip {{pkTarget === item ? 'selected' : ''}}"
+          bindtap="selectPKTarget"
+          data-name="{{item}}"
+        >{{item}}</view>
+      </view>
+      <button wx:if="{{pkTarget && !pkVoted}}" class="btn-primary" bindtap="sendPKVote">确认PK投票</button>
+      <text wx:if="{{pkVoted}}" class="voted-confirm">✅ 已投给 {{pkTarget}}</text>
+    </view>
+
+    <!-- 消息区 -->
+    <scroll-view class="messages-area" scroll-y scroll-into-view="{{scrollToMsg}}" scroll-with-animation>
+      <view wx:for="{{messages}}" wx:key="id" id="msg-{{index}}">
+        <view wx:if="{{item.type === 'system'}}" class="msg-system">{{item.content}}</view>
+        <view wx:else class="msg-bubble-wrap {{item.speaker_id === myPlayerId ? 'msg-me' : 'msg-other'}}">
+          <text class="msg-name">{{item.name}}</text>
+          <view class="msg-bubble {{item.speaker_id === myPlayerId ? 'bubble-me' : 'bubble-other'}}">
+            <text>{{item.content}}</text>
+          </view>
+        </view>
+      </view>
+      <view id="msg-bottom"></view>
+    </scroll-view>
+
+    <!-- 玩家列表 -->
+    <view class="players-mini">
+      <view wx:for="{{players}}" wx:key="id" class="pm-chip {{item.alive ? '' : 'dead'}} {{item.id === myPlayerId ? 'me' : ''}}">
+        <view class="pm-dot" style="background:{{item.id === myPlayerId ? (item.role_color || '#999') : '#888'}}"></view>
+        <text>{{item.name}}{{item.alive ? '' : ' 💀'}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- ===== 游戏结束 ===== -->
+  <view wx:if="{{view === 'end'}}" class="page-end">
+    <view class="end-card">
+      <text class="end-title {{winner === 'good' ? 'good-win' : 'wolf-win'}}">
+        {{winner === 'good' ? '🎉 好人大获全胜！' : '🐺 狼人胜利！'}}
+      </text>
+      <view class="all-roles">
+        <view wx:for="{{endPlayers}}" wx:key="id" class="role-reveal-card {{item.alive ? '' : 'dead'}}">
+          <view class="rrc-avatar" style="background:{{item.role_color || '#999'}}">{{item.name.slice(0,1)}}</view>
+          <text class="rrc-name">{{item.name}}</text>
+          <text class="rrc-role" style="color:{{item.role_color || '#999'}}">{{item.role_name}}</text>
+          <text class="rrc-status">{{item.alive ? '✅ 存活' : '💀 死亡'}}</text>
+        </view>
+      </view>
+      <button class="btn-primary" style="margin-top:48rpx" bindtap="backToLobby">返回大厅</button>
+    </view>
+  </view>
+
+  <!-- 预言家结果弹窗 -->
+  <view wx:if="{{showSeerModal}}" class="modal-overlay" bindtap="closeSeerModal">
+    <view class="seer-modal" catchtap="">
+      <text style="font-size:80rpx">🔮</text>
+      <text class="seer-modal-title">预言家查验结果</text>
+      <text class="seer-modal-result">{{seerResult}}</text>
+      <text class="muted" style="font-size:24rpx">仅你可见</text>
+      <button class="btn-primary" style="margin-top:32rpx" bindtap="closeSeerModal">知道了</button>
+    </view>
+  </view>
+
+</view>
