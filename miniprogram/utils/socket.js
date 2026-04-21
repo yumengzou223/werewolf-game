@@ -22,7 +22,7 @@ class SocketIO {
 
   _doConnect() {
     if (this._destroyed) return
-    const wsUrl = this._serverUrl.replace(/^https?/, 'ws') + '/socket.io/?EIO=4&transport=websocket'
+    const wsUrl = this._serverUrl.replace(/^https/, 'wss') + '/socket.io/?EIO=4&transport=websocket'
     console.log('[socket] connecting', wsUrl)
 
     const ws = wx.connectSocket({ url: wsUrl })
