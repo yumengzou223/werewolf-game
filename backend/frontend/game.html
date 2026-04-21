@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AI 狼人杀</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+
+<!-- ========== 等待房间 ========== -->
+<div id="page-waiting" class="page">
+  <div class="room-header">
+    <div class="conn-status" id="conn-status">⚫ 连接中...</div>
+    <div class="room-id-box">房间号：<span id="disp-room-id"></span></div>
+    <button class="btn-sm" onclick="copyRoomId()">复制</button>
+    <button class="btn-sm" onclick="copyLink()">复制链接</button>
+    <button class="btn-sm" onclick="openRules()" style="margin-left:auto">📖 规则</button>
+  </div>
+  <div id="waiting-players" class="players-grid"></div>
+  <div class="waiting-actions">
+    <button id="btn-add-ai" class="btn-secondary" onclick="addAI()">+ 添加AI</button>
+    <button id="btn-start" class="btn-primary disabled" onclick="startGame()" disabled>开始游戏</button>
+  </div>
+</div>
+
+<!-- ========== 夜间阶段 ========== -->
+<div id="page-night" class="page dark-bg">
+  <div class="night-overlay" id="night-overlay">
+    <div class="phase-label" id="night-phase-label">🌙 夜间阶段</div>
+    <div class="night-instruction" id="night-instruction">请闭眼，等待天亮...</div>
+    <div class="target-section" id="night-target-section" style="display:none">
+      <p id="night-prompt-text">选择目标：</p>
+      <div id="night-targets" class="players-row"></div>
+      <button class="btn-primary" id="night-confirm-btn" onclick="confirmNightAction()" disabled>确认</button>
+    </div>
+    <!-- 狼人内部聊天（仅狼人可见） -->
+    <div id="wolf-chat" style="display:none" class="wolf-chat-panel">
+      <div class="wolf-chat-title">🐺 狼队私聊</div>
+      <div id="wolf-chat-messages" class="wolf-chat-messages"></div>
+      <div class="wolf-chat-input-wrap">
+        <input id="wolf-chat-input" class="wolf-chat-input" placeholder="和队友商量..." maxlength="50" />
+        <button class="btn-wolf-send" onclick="sendWolfChat()">发送</button>
+      </div>
+    </div>
+    <div class="all-closed-eyes">
+      <div class="eyes-emoji">🙈 🙈</div>
+      <p>所有人请闭眼</p>
+    </div>
+    <div id="my-role-badge" class="my-role-badge" style="display:none">
+      <div class="role-badge-label">你的身份</div>
+      <div class="role-badge-name" id="my-role-name">-</div>
+      <div class="role-badge-hint" id="my-role-hint"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 夜间结果揭晓 ========== -->
+<div id="page-night-result" class="page dark-bg">
+  <div id="night-result-content"></div>
+</div>
+
+<!-- ========== 白天阶段 ========== -->
+<div id="page-day" class="page">
+  <div class="day-header">
+    <span class="day-badge" id="day-num">第1天</span>
+    <span class="phase-badge" id="phase-badge">白天发言</span>
+  </div>
+
+  <div id="day-dead-reveal" class="dead-reveal" style="display:none"></div>
+
+  <div id="speaking-area" class="speaking-area" style="display:none">
+    <div class="speaking-speaker">
+      <div class="speaker-card" id="speaker-card"></div>
+      <div class="timer-bar-wrap">
+        <div class="timer-bar" id="timer-bar"></div>
+        <div class="timer-num" id="timer-num">60</div>
+      </div>
+    </div>
+    <div class="speech-input-wrap" id="speech-input-wrap">
+      <textarea id="speech-input" class="speech-input" placeholder="输入你的发言..." maxlength="200"></textarea>
+      <button class="btn-primary" onclick="sendSpeech()">发言</button>
+    </div>
+  </div>
+
+  <div id="vote-area" class="vote-area" style="display:none">
+    <p class="vote-title">投票阶段 — 选择你要投票的玩家</p>
+    <div id="vote-players" class="players-row"></div>
+    <div id="vote-confirm-wrap" style="display:none">
+      <button class="btn-primary" onclick="sendVote()">确认投票</button>
+    </div>
+    <div class="vote-timer-bar-wrap">
+      <div class="timer-bar" id="vote-timer-bar"></div>
+      <div class="timer-num" id="vote-timer-num">30</div>
+    </div>
+  </div>
+
+  <div id="pk-area" class="pk-area" style="display:none">
+    <p class="vote-title">⚔️ PK投票 — 平票玩家再次发言</p>
+    <div id="pk-players" class="players-row"></div>
+    <div id="pk-vote-confirm-wrap" style="display:none">
+      <button class="btn-primary" onclick="sendPKVote()">确认PK投票</button>
+    </div>
+  </div>
+
+  <div class="messages-area" id="messages-area"></div>
+
+  <div id="player-list-float" class="players-mini-grid"></div>
+</div>
+
+<!-- ========== 游戏结束 ========== -->
+<div id="page-end" class="page dark-bg">
+  <div id="end-content"></div>
+</div>
+
+<!-- ========== 全局 Toast ========== -->
+<div id="toast" class="toast"></div>
+
+<!-- ========== 规则弹窗 ========== -->
+<div id="modal-rules">
+  <div class="rules-content">
+    <h2>🐺 狼人杀规则</h2>
+    <h3>🎯 游戏目标</h3>
+    <ul>
+      <li><b>好人阵营</b>（村民、预言家、女巫）：找出狼人并投票出局</li>
+      <li><b>狼人阵营</b>：杀光所有好人</li>
+    </ul>
+    <h3>🌙 夜间流程</h3>
+    <ul>
+      <li><b>狼人</b>：选择击杀一名玩家</li>
+      <li><b>预言家</b>：查验一名玩家是好人还是狼人</li>
+      <li><b>女巫</b>：可救人（解药）或毒人（毒药），每药仅用一次</li>
+    </ul>
+    <h3>☀️ 白天流程</h3>
+    <ul>
+      <li>天亮后死亡玩家出局</li>
+      <li>存活玩家轮流发言（60秒）</li>
+      <li>发言结束后投票，平票则 PK 再投</li>
+    </ul>
+    <h3>🃏 角色</h3>
+    <div class="role-rule"><div class="role-dot" style="background:#e74c3c"></div><b>狼人</b>：每晚杀一人，隐藏身份</div>
+    <div class="role-rule"><div class="role-dot" style="background:#f39c12"></div><b>预言家</b>：每晚查验一人</div>
+    <div class="role-rule"><div class="role-dot" style="background:#9b59b6"></div><b>女巫</b>：解药+毒药各一瓶</div>
+    <div class="role-rule"><div class="role-dot" style="background:#3498db"></div><b>村民</b>：无特殊能力</div>
+    <h3>🏆 胜利</h3>
+    <ul>
+      <li>好人：狼人全部出局</li>
+      <li>狼人：好人全部出局</li>
+    </ul>
+    <button class="rules-close" onclick="closeRules()">我学会了！</button>
+  </div>
+</div>
+
+<button class="rules-btn" onclick="openRules()">📖 规则</button>
+
+<script src="static/game.js"></script>
+</body>
+</html>

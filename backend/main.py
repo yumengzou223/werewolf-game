@@ -287,14 +287,9 @@ class GameRoom:
 
 
 # ====================== HTTP 路由 ======================
-# 兼容 Railway 两种部署方式：
-# 1. 从 repo 根目录运行 (python backend/main.py) → __file__ = backend/main.py
-# 2. 从 backend/ 目录运行 (python main.py) → __file__ = main.py
-if os.path.basename(os.path.abspath(__file__)) == "main.py":
-    _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-else:
-    _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-_FRONTEND_DIR = os.path.join(_BACKEND_DIR, "..", "frontend")
+# Docker/ Railway 部署：main.py 在 /app/main.py，frontend 在 /app/frontend/
+_BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))  # /app
+_FRONTEND_DIR = os.path.join(_BACKEND_DIR, "frontend")       # /app/frontend
 connected_sids = {}  # sid -> {room_id, player_id}
 
 @app.route("/")
