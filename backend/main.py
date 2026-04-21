@@ -60,7 +60,7 @@ def call_deepseek(messages, max_tokens=200):
         return None
 
 # ====================== 配置 ======================
-app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend"), static_folder=None)
+app = Flask(__name__, template_folder=None, static_folder=None)
 CORS(app, resources={r"/*": {"origins": "*"}})
 app.config["SECRET_KEY"] = "werewolf-secret-2024"
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet", allow_upgrades=True, ping_timeout=20, ping_interval=25)
@@ -291,6 +291,10 @@ class GameRoom:
 _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))  # /app
 _FRONTEND_DIR = os.path.join(_BACKEND_DIR, "frontend")       # /app/frontend
 connected_sids = {}  # sid -> {room_id, player_id}
+
+@app.route("/health")
+def health():
+    return "ok"
 
 @app.route("/")
 def index():
