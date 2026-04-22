@@ -659,24 +659,29 @@ Page({
   },
 
   selectPersona(e) {
-    this.setData({ selectedPersona: e.currentTarget.dataset.key })
+    const key = e.currentTarget.dataset.key
+    console.log('[selectPersona] tapped key=', key, 'dataset=', e.currentTarget.dataset)
+    this.setData({ selectedPersona: key })
   },
 
   async confirmAddAI() {
-    const { selectedPersona, myRoomId } = this.data
+    const { selectedPersona, myRoomId, personaList } = this.data
     this.setData({ showPersonaModal: false })
-    // 防御：selectedPersona 必须有值，否则用随机添加
+    console.log('[AI选择] selectedPersona=', selectedPersona, 'myRoomId=', myRoomId, 'list=', personaList)
     const personaToUse = selectedPersona || null
     try {
       if (personaToUse) {
+        console.log('[AI选择] 调用add-ai-preset, persona=', personaToUse)
         await this._request(`/api/room/${myRoomId}/add-ai-preset`, { persona: personaToUse })
-        const name = this.data.personaList.find(p => p.key === personaToUse)?.name || ''
+        const name = personaList.find(p => p.key === personaToUse)?.name || ''
         this._toast(`已添加 ${name} AI`)
       } else {
+        console.log('[AI选择] 调用add-ai（随机）')
         await this._request(`/api/room/${myRoomId}/add-ai`, {})
         this._toast('AI玩家已添加（随机风格）')
       }
     } catch (e) {
+      console.log('[AI选择] 失败:', e.message || e)
       this._toast('添加AI失败')
     }
   },
