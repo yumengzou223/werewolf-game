@@ -665,6 +665,7 @@ Page({
   },
 
   async confirmAddAI() {
+    console.log('[confirmAddAI] CALLED - selectedPersona from this.data:', this.data.selectedPersona)
     const { selectedPersona, myRoomId, personaList } = this.data
     this.setData({ showPersonaModal: false })
     console.log('[AI选择] selectedPersona=', selectedPersona, 'myRoomId=', myRoomId, 'list=', personaList)
