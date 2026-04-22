@@ -659,9 +659,9 @@ Page({
   },
 
   selectPersona(e) {
-    e.stopPropagation()
+    // 不需要 stopPropagation，因为父容器用了 catchtap 阻止冒泡
     const key = e.currentTarget.dataset.key
-    console.log('[selectPersona] tapped key=', key, 'dataset=', e.currentTarget.dataset)
+    console.log('[selectPersona] tapped key=', key)
     this.setData({ selectedPersona: key })
   },
 
