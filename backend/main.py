@@ -1,6 +1,6 @@
 """
 AI 狼人杀 · 后端 (Flask + SocketIO 实时版)
-修复版：严格按正常狼人杀流程实现，接入 DeepSeek LLM
+修复版:严格按正常狼人杀流程实现,接入 DeepSeek LLM
 """
 import os
 import json
@@ -28,11 +28,11 @@ except Exception as _e:
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1/chat/completions"
 USE_LLM = bool(DEEPSEEK_API_KEY)
-print(f"[LLM] DeepSeek {'已启用' if USE_LLM else '未配置，使用模板发言'}")
+print(f"[LLM] DeepSeek {'已启用' if USE_LLM else '未配置,使用模板发言'}")
 
-# LLM 调用（同步，在后台线程调用）
+# LLM 调用(同步,在后台线程调用)
 def call_deepseek(messages, max_tokens=200):
-    """调用 DeepSeek API，返回文本；失败返回 None"""
+    """调用 DeepSeek API,返回文本;失败返回 None"""
     if not USE_LLM:
         return None
     try:
@@ -78,6 +78,117 @@ SPEAK_TIME = 120   # 发言时间秒
 VOTE_TIME = 30    # 投票时间秒
 NIGHT_WAIT = 60   # 夜间等待人类操作超时秒
 
+# ====================== AI 人设预设 ======================
+AI_PERSONAS = {
+    "silent": {
+        "name": "沉默者",
+        "desc": "能不说话就不说话，被逼才开口，字数极少",
+        "style": "说话极少，惜字如金，能不开口就不开口。被迫发言时也只说一两句话，从不主动指控或分析。"
+    },
+    "aggressive": {
+        "name": "激进派",
+        "desc": "爱指控，语气强硬，喜欢踩人出头",
+        "style": "语气强硬，观点鲜明，喜欢直接点名质疑或指控别人。说话有气势，不喜欢犹豫和模棱两可。"
+    },
+    "slime": {
+        "name": "老油条",
+        "desc": "说话绕弯，从不正面回答，永远转移话题",
+        "style": "说话绕弯子，从不正面试图回答问题，永远在转移话题或反问别人。非常狡猾，不会留下把柄。"
+    },
+    "newbie": {
+        "desc": "天真直率，有什么说什么，逻辑简单",
+        "name": "萌新区",
+        "style": "天真直率，有什么说什么，思维简单直接，不会绕圈子，也不会伪装，说话带有一点学生气。"
+    },
+    "dramatic": {
+        "name": "戏精",
+        "desc": "表演型人格，说话夸张有情绪，爱用感叹号",
+        "style": "表演型人格！说话夸张有情绪，爱用感叹号。经常用“天呐”“真的假的”“太可怕了”这类词。代入感极强。"
+    },
+}
+
+# ====================== 狼人杀专业提示词 ======================
+# 通用结构：先【内心推理】（自己看），再【本轮发言】（给其他玩家看）
+# 发言必须短（20-50字），口语化，有轮次感
+WEREWOLF_PROMPT_TEMPLATE = """你是国服狼人杀顶尖玩家，1000+场经验。严格从自己身份的第一视角，用严谨逻辑链分析场上局势，生成真实有说服力的真人发言。
+
+【核心原则】
+1. 严格视角锁死：只知道自己身份和夜间信息，绝不开上帝视角
+2. 逻辑链闭环：每个结论必须有对应论据，不能凭空踩/保人
+3. 状态自然拟人：语气像真人，口语化，有轻微情绪波动
+4. 轮次感清晰：只聊当前轮次最重要的事，不提前聊假设内容
+5. 拉票导向明确：结尾清晰说出投票目标并给出理由
+
+【绝对禁止】
+- 开上帝视角直接说"XX是狼"
+- 说"我是AI""根据规则"
+- 贴脸/发誓/情绪绑架
+- 发言超过50字
+
+【输出格式】
+【内心推理】<私密推演：局势判断、站边、策略、投票目标>
+【本轮发言】<给其他玩家看的发言，20-50字，口语化>"""
+
+ROLE_PROMPTS = {
+    "werewolf": """【狼人专属】
+你的任务：隐藏狼人身份，混淆好人视角，抗推好人。
+
+{{PERSONA_BLOCK}}
+
+【狼人策略】
+- 完美模仿好人视角：永远用“好人思维”分析场上局势
+- 找好人微小漏洞放大攻击：重点关注发言有漏洞的好人
+- 必要时卖队友保自己：可以说“XX行为不像好人，我暂时不站他”
+- 绝对不能聊爆：不能提及夜晚信息、狼队友配合等只有狼人才知道的事
+- 轮次优先：当前轮次要推谁、为什么要推他，说清楚理由
+
+【发言风格】
+狼人是伪装者，发言要有逻辑、有站边、有拉票，但理由站得住脚。不能装得太完美，太完美的发言反而可疑。""",
+
+    "seer": """【预言家专属】
+你的任务：报查验、留警徽流、点狼坑、带队好人。
+
+{{PERSONA_BLOCK}}
+
+【预言家策略】
+- 报查验要干脆：先报昨晚查了谁、结果是什么（金水/查杀）
+- 报心路历程：为什么验这个人，让好人信服
+- 留清晰警徽流：接下来要验谁，说清楚理由和顺序
+- 点悍跳狼的漏洞：分析对跳者的逻辑漏洞，但不要人身攻击
+- 真诚拉票：呼吁好人在自己这边，但不强硬
+
+【发言风格】
+预言家要有底气、有节奏、有说服力。报查验要干脆利落，不吞吞吐吐。逻辑要清晰，站边要明确。""",
+
+    "witch": """【女巫专属】
+你的任务：隐身份盘逻辑，关键轮次跳身份带队。
+
+{{PERSONA_BLOCK}}
+
+【女巫策略】
+- 前期隐身份：像普通村民一样盘逻辑，不要主动暴露
+- 跳身份时机：只在上胸键轮次或需要归票时才跳
+- 跳身份时必须报银水/毒人信息：说清楚救了谁、毒了谁、为什么
+- 归票要强势：明确说“大家跟我投XX”
+
+【发言风格】
+女巫要有底气但不张扬，发言像有逻辑的好人，关键时刻果断跳身份带队。""",
+
+    "villager": """【村民专属】
+你的任务：找狼是唯一目标，发言要有逻辑、有站边。
+
+{{PERSONA_BLOCK}}
+
+【村民策略】
+- 盘发言漏洞：重点分析场上发言有问题的玩家
+- 不轻易站边：信息不足时不强行站边，但可以说“我暂时不站谁”
+- 明确投票目标：结尾说“大家跟我投XX”或“我暂时投谁，过”
+- 不要乱带节奏：村民没有特殊信息，发言要符合“没有特殊信息的好人”视角
+
+【发言风格】
+村民的发言要像普通好人——有困惑、有疑虑、有判断。不要装得很厉害，也不要太弱。""",
+}
+
 # ====================== 工具函数 ======================
 def generate_id():
     return uuid.uuid4().hex[:8]
@@ -86,7 +197,7 @@ def generate_id():
 rooms = {}  # room_id -> GameRoom
 
 class Player:
-    def __init__(self, sid=None, name="", is_ai=False, is_human=False):
+    def __init__(self, sid=None, name="", is_ai=False, is_human=False, persona=None):
         self.id = generate_id()
         self.sid = sid
         self.name = name
@@ -100,6 +211,7 @@ class Player:
         self.witch_poison = True  # 毒药是否可用
         self.has_spoken = False
         self.pk_nominated = False
+        self.persona = persona     # AI 人设预设 key,None=随机风格
 
     def to_dict(self, reveal_role=False):
         return {
@@ -110,6 +222,7 @@ class Player:
             "role_color": ROLES.get(self.role, {}).get("color", "") if reveal_role else "",
             "alive": self.alive,
             "is_ai": self.is_ai,
+            "persona": self.persona,
         }
 
 
@@ -288,7 +401,7 @@ class GameRoom:
 
 
 # ====================== HTTP 路由 ======================
-# Docker/ Railway 部署：main.py 在 /app/main.py，frontend 在 /app/frontend/
+# Docker/ Railway 部署:main.py 在 /app/main.py,frontend 在 /app/frontend/
 _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))  # /app
 _FRONTEND_DIR = os.path.join(_BACKEND_DIR, "frontend")       # /app/frontend
 connected_sids = {}  # sid -> {room_id, player_id}
@@ -370,10 +483,48 @@ def api_add_ai(room_id):
     used_names = {p.name for p in room.players}
     avail = [n for n in ai_name_pool if n not in used_names]
     ai_name = random.choice(avail) if avail else f"AI_{generate_id()[:4]}"
-    player = Player(name=ai_name, is_ai=True)
+    # 随机分配人设
+    persona_key = random.choice(list(AI_PERSONAS.keys()))
+    player = Player(name=ai_name, is_ai=True, persona=persona_key)
     room.add_player(player)
     socketio.emit("player_joined", room.get_state(), room=room_id)
     return jsonify({"player_id": player.id, "player": player.to_dict()})
+
+
+@app.route("/api/room/<room_id>/add-ai-preset", methods=["POST"])
+def api_add_ai_preset(room_id):
+    """邀请指定人设的AI玩家"""
+    room = rooms.get(room_id)
+    if not room:
+        return jsonify({"error": "房间不存在"}), 404
+    if room.phase != "waiting":
+        return jsonify({"error": "游戏已开始"}), 400
+    if len(room.players) >= MAX_PLAYERS:
+        return jsonify({"error": "房间已满"}), 400
+
+    data = request.get_json() or {}
+    persona_key = data.get("persona")
+    if persona_key and persona_key not in AI_PERSONAS:
+        return jsonify({"error": f"未知的人设:{persona_key}"}), 400
+
+    ai_name_pool = [
+        "深渊狼", "暗月狼", "荒野狼", "占星师", "先知", "预言少女",
+        "灵媒师", "调药师", "村长伯伯", "猎人老张", "小红帽", "三毛",
+        "花花", "阿强", "牛牛", "小明", "大虎"
+    ]
+    used_names = {p.name for p in room.players}
+    avail = [n for n in ai_name_pool if n not in used_names]
+    ai_name = random.choice(avail) if avail else f"AI_{generate_id()[:4]}"
+    player = Player(name=ai_name, is_ai=True, persona=persona_key)
+    room.add_player(player)
+    socketio.emit("player_joined", room.get_state(), room=room_id)
+    return jsonify({"player_id": player.id, "player": player.to_dict()})
+
+
+@app.route("/api/personas", methods=["GET"])
+def api_list_personas():
+    """返回所有可用AI人设列表"""
+    return jsonify({"personas": AI_PERSONAS})
 
 @app.route("/api/room/<room_id>/start", methods=["POST"])
 def api_start(room_id):
@@ -389,9 +540,9 @@ def api_start(room_id):
         if p.sid:
             socketio.emit("game_started", room.get_state(for_sid=p.sid), room=p.sid)
         else:
-            # AI玩家没有sid，广播用全知状态
+            # AI玩家没有sid,广播用全知状态
             pass
-    # 也给房间广播一下（不含角色）
+    # 也给房间广播一下(不含角色)
     socketio.emit("game_started", room.get_state(), room=room_id)
     socketio.start_background_task(_night_phase, room_id)
     return jsonify({"ok": True})
@@ -400,7 +551,7 @@ def api_start(room_id):
 # ====================== 夜间流程 ======================
 
 def _night_phase(room_id):
-    """夜间主流程：狼人 → 预言家 → 女巫 → 结算"""
+    """夜间主流程:狼人 → 预言家 → 女巫 → 结算"""
     room = rooms.get(room_id)
     if not room or room.phase == "end":
         return
@@ -411,7 +562,7 @@ def _night_phase(room_id):
         "kill_target": None,
         "seer_target": None,
         "seer_result": None,
-        "witch_heal": False,   # False=未用，None=跳过
+        "witch_heal": False,   # False=未用,None=跳过
         "witch_poison": None,
     }
     # 重置夜间状态
@@ -444,7 +595,7 @@ def _phase_werewolf(room_id, token):
     human_wolf = next((w for w in wolves if not w.is_ai), None)
     non_wolves = [p for p in room.get_alive_players() if p.role != "werewolf"]
 
-    # 通知前端狼人阶段（只有狼人玩家会看到目标列表）
+    # 通知前端狼人阶段(只有狼人玩家会看到目标列表)
     for w in wolves:
         if w.sid:
             teammates = [{"id": x.id, "name": x.name} for x in wolves if x.id != w.id]
@@ -464,7 +615,7 @@ def _phase_werewolf(room_id, token):
         socketio.sleep(3)
         _phase_seer(room_id, token)
     else:
-        # 有人类狼人，等待操作，超时自动随机
+        # 有人类狼人,等待操作,超时自动随机
         socketio.sleep(NIGHT_WAIT)
         room = rooms.get(room_id)
         if not room or room._phase_token != token:
@@ -473,7 +624,7 @@ def _phase_werewolf(room_id, token):
             # 超时自动随机
             target = random.choice(non_wolves)
             room.night_actions["kill_target"] = target.name
-            room.add_sys_msg(f"狼人超时，自动击杀 {target.name}")
+            room.add_sys_msg(f"狼人超时,自动击杀 {target.name}")
         _phase_seer(room_id, token)
 
 
@@ -539,7 +690,7 @@ def _phase_witch(room_id, token):
     kill_target = room.night_actions.get("kill_target")
 
     if witch.is_ai:
-        # AI女巫逻辑：随机决定是否救人/毒人
+        # AI女巫逻辑:随机决定是否救人/毒人
         if kill_target and witch.witch_heal and random.random() > 0.3:
             room.night_actions["witch_heal"] = kill_target
             witch.witch_heal = False
@@ -548,7 +699,7 @@ def _phase_witch(room_id, token):
 
         if witch.witch_poison and random.random() > 0.6:
             alive_others = room.alive_players_except(witch.id)
-            # 女巫不能在已救人的情况下毒同一个人（不同版本规则不同，这里简化）
+            # 女巫不能在已救人的情况下毒同一个人(不同版本规则不同,这里简化)
             if alive_others:
                 poison_target = random.choice(alive_others)
                 room.night_actions["witch_poison"] = poison_target.name
@@ -559,11 +710,11 @@ def _phase_witch(room_id, token):
         socketio.sleep(2)
         _resolve_night(room_id, token)
     else:
-        # 人类女巫：发送事件让前端显示选择界面
+        # 人类女巫:发送事件让前端显示选择界面
         if witch.sid:
             socketio.emit("role_turn", {
                 "role": "witch",
-                "instruction": "女巫，请做出决定",
+                "instruction": "女巫,请做出决定",
                 "kill_target": kill_target,
                 "can_heal": witch.witch_heal,
                 "can_poison": witch.witch_poison,
@@ -571,16 +722,12 @@ def _phase_witch(room_id, token):
                 "state": room.get_state(for_sid=witch.sid),
             }, room=witch.sid)
 
-        # 等待女巫操作（她会通过socket发送 witch_action 事件）
+        # 等待女巫操作(她会通过socket发送 witch_action 事件)
         socketio.sleep(NIGHT_WAIT)
         room = rooms.get(room_id)
         if not room or room._phase_token != token:
             return
-        # 超时：如果解药未决定，跳过
-        if room.night_actions.get("witch_heal") is False:
-            room.night_actions["witch_heal"] = None  # 跳过
-        if room.night_actions.get("witch_poison") is False:
-            room.night_actions["witch_poison"] = None  # 跳过
+        # 超时:直接结算（未使用的药=放弃）
         _resolve_night(room_id, token)
 
 
@@ -595,7 +742,7 @@ def _resolve_night(room_id, token):
     room._night_resolving = True
 
     kill_t = room.night_actions.get("kill_target")
-    heal_t = room.night_actions.get("witch_heal")   # None=跳过，玩家名=救了谁
+    heal_t = room.night_actions.get("witch_heal")   # None=跳过,玩家名=救了谁
     poison_t = room.night_actions.get("witch_poison")
 
     dead_names = []
@@ -634,7 +781,7 @@ def _resolve_night(room_id, token):
 
     socketio.sleep(1)
 
-    # 【保护】重新验证：sleep 期间游戏可能已结束
+    # 【保护】重新验证:sleep 期间游戏可能已结束
     room = rooms.get(room_id)
     if not room or room._phase_token != token or room.phase == "end":
         room._night_resolving = False
@@ -653,13 +800,13 @@ def _resolve_night(room_id, token):
     if not room or room._phase_token != token or room.phase == "end":
         room._night_resolving = False
         return
-    # 结算完成，释放幂等锁，然后启动遗言阶段
+    # 结算完成,释放幂等锁,然后启动遗言阶段
     room._night_resolving = False
     _run_last_words(room_id, token, dead_players)
 
 
 def _run_last_words(room_id, token, dead_players):
-    """遗言阶段：死亡玩家依次发言30秒"""
+    """遗言阶段:死亡玩家依次发言30秒"""
     room = rooms.get(room_id)
     if not room or room._phase_token != token or room.phase == "end":
         return
@@ -667,14 +814,14 @@ def _run_last_words(room_id, token, dead_players):
     human_dead = [p for p in dead_players if not p.is_ai]
 
     if not human_dead:
-        # 没有人类死亡玩家，直接进入白天
+        # 没有人类死亡玩家,直接进入白天
         socketio.start_background_task(_start_day, room_id, token)
         return
 
     room.phase = "last_words"
 
     for dp in human_dead:
-        room.add_sys_msg(f"【遗言】{dp.name}（{ROLES[dp.role]['name']}）请发言（30秒）")
+        room.add_sys_msg(f"【遗言】{dp.name}({ROLES[dp.role]['name']})请发言(30秒)")
         room.awaiting_speech_for = dp.id
 
         socketio.emit("last_words_start", {
@@ -771,7 +918,7 @@ def _advance_speaker(room_id, token):
         room.turn_index += 1
 
     if room.turn_index >= len(room.speaker_list):
-        # 所有人发完言，进入投票
+        # 所有人发完言,进入投票
         socketio.sleep(1)
         _run_vote(room_id, token)
         return
@@ -785,7 +932,7 @@ def _advance_speaker(room_id, token):
 
     room.awaiting_speech_for = speaker.id
 
-    # 广播给所有人：不含角色信息（防止身份泄露）
+    # 广播给所有人:不含角色信息(防止身份泄露)
     socketio.emit("speaking_start", {
         "speaker_id": speaker.id,
         "speaker_name": speaker.name,
@@ -809,7 +956,7 @@ def _advance_speaker(room_id, token):
     if speaker.is_ai:
         socketio.start_background_task(_ai_speak, room_id, speaker.id, token)
     else:
-        # 等待前端发 speech_ready 信号（最多等10秒），再开始计时
+        # 等待前端发 speech_ready 信号(最多等10秒),再开始计时
         room._speech_ready = False
         ready_wait = 0
         while ready_wait < 10:
@@ -821,7 +968,7 @@ def _advance_speaker(room_id, token):
             if room._speech_ready:
                 break
 
-        # 前端已准备好，开始计时
+        # 前端已准备好,开始计时
         room._speech_done = False
         elapsed = 0
         while elapsed < SPEAK_TIME:
@@ -831,8 +978,8 @@ def _advance_speaker(room_id, token):
             if not room or room._phase_token != token or room.phase not in ("discussion",):
                 return
             if room._speech_done or room.awaiting_speech_for != speaker.id:
-                return  # 已发言，on_speech 会继续推进
-        # 真正超时（需同时验证：phase未变 + 玩家仍存活 + 仍轮到该玩家）
+                return  # 已发言,on_speech 会继续推进
+        # 真正超时(需同时验证:phase未变 + 玩家仍存活 + 仍轮到该玩家)
         room = rooms.get(room_id)
         if not room or room._phase_token != token:
             return
@@ -849,7 +996,7 @@ def _advance_speaker(room_id, token):
 
 
 def _ai_speak(room_id, player_id, token):
-    """AI玩家发言（模拟思考2-4秒后发言）"""
+    """AI玩家发言(模拟思考2-4秒后发言)"""
     socketio.sleep(random.uniform(2, 4))
     room = rooms.get(room_id)
     if not room or room._phase_token != token or room.phase not in ("discussion", "pk_discussion"):
@@ -891,7 +1038,7 @@ def _ai_speak(room_id, player_id, token):
 
 
 def _call_deepseek(system_prompt, user_prompt, max_tokens=200):
-    """调用 DeepSeek API，返回文本。失败返回 None。"""
+    """调用 DeepSeek API,返回文本。失败返回 None。"""
     if not USE_LLM:
         return None
     try:
@@ -923,47 +1070,47 @@ def _call_deepseek(system_prompt, user_prompt, max_tokens=200):
 
 
 def _build_game_context(room, player):
-    """构建完整游戏上下文供LLM参考（含全局历史、死亡记录、查验记录）"""
+    """构建完整游戏上下文供LLM参考(含全局历史、死亡记录、查验记录)"""
     alive = room.get_alive_players()
     dead = [p for p in room.players if not p.alive]
 
-    # 死亡记录（含角色）
+    # 死亡记录(含角色)
     dead_lines = []
     for p in dead:
-        dead_lines.append(f"{p.name}（{ROLES.get(p.role, {}).get('name', '?')}）")
+        dead_lines.append(f"{p.name}({ROLES.get(p.role, {}).get('name', '?')})")
 
-    # 全部历史发言（不截断，让LLM有完整上下文）
+    # 全部历史发言(不截断,让LLM有完整上下文)
     all_msgs = room.messages if room.messages else []
     msg_lines = []
     for m in all_msgs:
         if m.get("type") == "system":
             msg_lines.append(f"[系统] {m['content']}")
         else:
-            msg_lines.append(f"第{m.get('day', room.day) if 'day' in m else '?'}天 {m['name']}：{m['content']}")
+            msg_lines.append(f"第{m.get('day', room.day) if 'day' in m else '?'}天 {m['name']}:{m['content']}")
 
-    # 预言家私有记录（只有预言家自己能用）
+    # 预言家私有记录(只有预言家自己能用)
     seer_notes = ""
     if player.role == "seer":
         results = []
         for key in ("seer_result",):
             r = room.night_actions.get(key)
             if r:
-                results.append(f"昨晚查验：{r}")
+                results.append(f"昨晚查验:{r}")
         if results:
             seer_notes = "\n【你的查验记录】\n" + "\n".join(results)
 
-    ctx = f"""当前游戏状态：第 {room.day} 天
-存活玩家（{len(alive)}人）：{', '.join(p.name for p in alive)}
-已出局玩家：{', '.join(dead_lines) if dead_lines else '无'}
+    ctx = f"""当前游戏状态:第 {room.day} 天
+存活玩家({len(alive)}人):{', '.join(p.name for p in alive)}
+已出局玩家:{', '.join(dead_lines) if dead_lines else '无'}
 {seer_notes}
 ===历史发言===
-{chr(10).join(msg_lines) if msg_lines else '（暂无）'}
+{chr(10).join(msg_lines) if msg_lines else '(暂无)'}
 ===历史结束==="""
     return ctx
 
 
 def _llm_decide_night_target(player, room, candidates, action_desc):
-    """用LLM决定夜间行动目标，支持CoT推理"""
+    """用LLM决定夜间行动目标,支持CoT推理"""
     if not USE_LLM:
         return None
     if not candidates:
@@ -977,25 +1124,25 @@ def _llm_decide_night_target(player, room, candidates, action_desc):
         wolves = room.get_werewolves()
         wolf_team = [w.name for w in wolves if w.id != player.id]
         sys_prompt = f"""你是狼人杀游戏中的【狼人】玩家"{player.name}"。
-狼队友：{', '.join(wolf_team) if wolf_team else '无'}
+狼队友:{', '.join(wolf_team) if wolf_team else '无'}
 你需要{action_desc}。
-请先用<think>标签做简短推理（分析哪个目标最有价值），再在<answer>标签内只输出一个玩家名字。
-格式：<think>推理过程</think><answer>玩家名</answer>"""
+请先用<think>标签做简短推理(分析哪个目标最有价值),再在<answer>标签内只输出一个玩家名字。
+格式:<think>推理过程</think><answer>玩家名</answer>"""
     elif player.role == "seer":
         sys_prompt = f"""你是狼人杀游戏中的【预言家】玩家"{player.name}"。
-你需要{action_desc}，优先查验你最怀疑是狼人的玩家。
-请先用<think>标签做简短推理（分析谁最可疑），再在<answer>标签内只输出一个玩家名字。
-格式：<think>推理过程</think><answer>玩家名</answer>"""
+你需要{action_desc},优先查验你最怀疑是狼人的玩家。
+请先用<think>标签做简短推理(分析谁最可疑),再在<answer>标签内只输出一个玩家名字。
+格式:<think>推理过程</think><answer>玩家名</answer>"""
     else:
         sys_prompt = f"""你是狼人杀游戏中的【{role_name}】玩家"{player.name}"。
 你需要{action_desc}。
-请先用<think>标签做简短推理，再在<answer>标签内只输出一个玩家名字。
-格式：<think>推理过程</think><answer>玩家名</answer>"""
+请先用<think>标签做简短推理,再在<answer>标签内只输出一个玩家名字。
+格式:<think>推理过程</think><answer>玩家名</answer>"""
 
     user_prompt = f"""{game_ctx}
 
-可选目标：{', '.join(candidate_names)}
-请做出决定："""
+可选目标:{', '.join(candidate_names)}
+请做出决定:"""
 
     result = _call_deepseek(sys_prompt, user_prompt, max_tokens=200)
     if result:
@@ -1014,92 +1161,44 @@ def _llm_decide_night_target(player, room, candidates, action_desc):
 
 
 def _generate_ai_speech(player, room, alive_names):
-    """生成AI发言内容：优先调用 DeepSeek LLM（带CoT+few-shot），失败则使用模板"""
+    """生成AI发言内容:先用狼人杀专业提示词调用LLM,失败则使用模板"""
     role_info = ROLES.get(player.role, {})
     role_name = role_info.get("name", player.role)
 
-    # ===== 构建角色专属系统提示（含few-shot博弈示例）=====
+    # ===== 构建系统提示 =====
+    sys_prompt = WEREWOLF_PROMPT_TEMPLATE
+
+    role_key = player.role if player.role in ROLE_PROMPTS else "villager"
+    role_block = ROLE_PROMPTS[role_key]
+
+    # 注入预言家查验结果
+    seer_result = room.night_actions.get("seer_result", "")
+    role_block = role_block.replace("{{SEER_RESULT}}", seer_result or "(尚未查验)")
+
+    # 注入狼人队友
     if player.role == "werewolf":
         wolves = room.get_werewolves()
         wolf_team = [w.name for w in wolves if w.id != player.id]
-        sys_prompt = f"""你在玩狼人杀，你是【狼人】，名字"{player.name}"，队友：{', '.join(wolf_team) if wolf_team else '无'}。
+        role_block = role_block.replace("{{WOLF_TEAM}}", ", ".join(wolf_team) if wolf_team else "无队友")
+    else:
+        role_block = role_block.replace("{{WOLF_TEAM}}", "")
 
-你的任务：混入好人中，不被识破，推动好人投好人。
+    # 注入人设风格
+    if player.persona and player.persona in AI_PERSONAS:
+        persona_info = AI_PERSONAS[player.persona]
+        pname = persona_info["name"]
+        pstyle = persona_info["style"]
+        persona_block = f"\n\n【额外风格约束】--你扮演的是：{pname}。{pstyle}"
+    else:
+        persona_block = ""
+    role_block_filled = role_block.replace("{{PERSONA_BLOCK}}", persona_block)
+    sys_prompt += f"\n\n{role_block_filled}"
 
-说话风格：像真实玩家一样，短句，口语，有情绪。禁止汇总信息、禁止说"确实"/"综上"/"总结"/"目前局势"这类词。
-
-✅ 好发言（简短直接）：
-- "感觉小王有点怪，一直在绕圈，说了半天没说到点上"
-- "这个预言家跳得太突然了吧，我怀疑是假的"
-- "我没什么特别想法，先听听大家的"
-- "别老盯着我，我就是个普通村民"
-
-❌ 坏发言（禁止这种）：
-- "综合目前局势分析，XXX的发言存在逻辑漏洞，建议大家关注"
-- "XXX确实可疑，但YYY的查杀力度也很大，我建议..."
-
-字数：20-50字。只说一件事，不展开。"""
-
-    elif player.role == "seer":
-        seer_result = room.night_actions.get("seer_result", "")
-        seer_target = room.night_actions.get("seer_target", "")
-        wolves_found = "狼人" in seer_result if seer_result else False
-        sys_prompt = f"""你在玩狼人杀，你是【预言家】，名字"{player.name}"。
-昨晚查验结果：{seer_result if seer_result else '还没查验'}
-
-说话风格：口语，简短，有时候用问句或感叹，像真人在聊天。禁止汇总信息。
-
-✅ 好发言：
-- "我出来说了——我是预言家，昨晚查了小明，狼人！投他！"
-- "查到好人了，但现在不是跳的时机，等等看"
-- "先不说，第一天信息太少"
-- "刚才那个说话方式很怪，感觉在演"
-
-❌ 坏发言（禁止）：
-- "根据目前的信息综合分析，我认为XXX的发言逻辑存在问题..."
-
-字数：20-50字。"""
-
-    elif player.role == "witch":
-        can_heal = player.witch_heal
-        can_poison = player.witch_poison
-        sys_prompt = f"""你在玩狼人杀，你是【女巫】，名字"{player.name}"，以村民身份隐藏。
-
-说话风格：短句，口语，随意一点，不要暴露身份，不要说教。
-
-✅ 好发言：
-- "那个谁刚才说话我没太听懂，感觉有点刻意"
-- "嗯……我倾向投小明，说不上来就是感觉怪"
-- "先看看吧，第一天乱投没意思"
-- "刚那个人替XXX洗白洗得也太积极了"
-
-❌ 坏发言（禁止）：
-- "综合场上信息，XXX的发言存在明显漏洞..."
-
-字数：20-50字。"""
-
-    else:  # villager
-        sys_prompt = f"""你在玩狼人杀，你是【村民】，名字"{player.name}"。
-
-说话风格：真实玩家口吻，短句口语，可以不确定、可以困惑、可以有情绪。禁止说"综上/确实/目前局势"等词。
-
-✅ 好发言：
-- "感觉小王一直在绕，说了好多但没一句有用的"
-- "我也不知道投谁，信息太少了"
-- "那个预言家说的有道理，跟了"
-- "等等，刚才那人说话前后矛盾吧？"
-- "我没啥怀疑，先观察"
-
-❌ 坏发言（禁止）：
-- "综合发言分析，XXX发言存在漏洞，建议重点关注..."
-
-字数：15-45字。说一件事，不用展开。"""
-
+    # ===== 构建用户提示 =====
     game_ctx = _build_game_context(room, player)
 
-    # 构建本轮发言进度信息
-    speaker_list = getattr(room, 'speaker_list', [])
-    turn_index = getattr(room, 'turn_index', 0)
+    speaker_list = getattr(room, "speaker_list", [])
+    turn_index = getattr(room, "turn_index", 0)
     spoken_names = []
     not_spoken_names = []
     if speaker_list:
@@ -1108,42 +1207,44 @@ def _generate_ai_speech(player, room, alive_names):
             if sp:
                 if i < turn_index:
                     spoken_names.append(sp.name)
-                elif sp.id != player.id:
+                else:
                     not_spoken_names.append(sp.name)
-    turn_info = ""
-    if spoken_names:
-        turn_info += f"\n本轮已发言玩家（可根据其发言内容评论）：{', '.join(spoken_names)}"
-    if not_spoken_names:
-        turn_info += f"\n本轮尚未发言玩家（不要评论他们，他们还没说话）：{', '.join(not_spoken_names)}"
+    else:
+        not_spoken_names = list(alive_names)
 
-    user_prompt = f"""{game_ctx}{turn_info}
+    last_vote_info = getattr(room, "last_vote_info", "") or ""
+    night_killed = room.night_actions.get("kill_target")
+    night_info = f"昨夜死亡:{night_killed}" if night_killed else "昨夜死亡:无人"
 
-现在轮到你（{player.name}，{role_name}）发言。
-请先在<think>标签内做简短的内心分析（场上局势判断、策略选择），再直接输出发言内容。
-格式：<think>内心分析</think>发言内容
+    user_prompt = f"""【当前局势】
+身份:{role_name} 名字:{player.name}
+存活玩家:{', '.join(alive_names)}
+已发言:{', '.join(spoken_names) if spoken_names else '无'}
+未发言:{', '.join(not_spoken_names) if not_spoken_names else '无'}
+{night_info}
+{last_vote_info}
 
-重要约束：
-- 只能评论【已发言玩家】的发言内容，不能评论还没发言的玩家
-- 如果本轮你是第一个发言，不要提及任何具体玩家的发言表现
-- 发言口语化，短句，20-50字，只说一件事，禁止汇总信息
+{game_ctx}
 
-注意：只有<think>之后的部分会被展示给其他玩家，<think>内的内容是你的私密思考。"""
+【发言任务】
+你是{role_name},轮到你发言了。请严格按以下格式输出:
+
+【内心推理】<简短推演:场上局势、站边、策略、投票目标,只给自己看>
+【本轮发言】<给其他玩家看的发言,20-50字,口语化,有站边有理由>"""
 
     # 尝试调用 LLM
-    llm_result = _call_deepseek(sys_prompt, user_prompt, max_tokens=300)
+    llm_result = _call_deepseek(sys_prompt, user_prompt, max_tokens=400)
     if llm_result:
-        import re
-        # 打印AI的CoT推理过程（仅控制台可见）
-        think_match = re.search(r"<think>(.*?)</think>", llm_result, re.DOTALL)
+        import re as _re
+        think_match = _re.search(r"【内心推理】(.*?)【本轮发言】", llm_result, _re.DOTALL)
         if think_match:
-            print(f"\n[AI思考] {player.name}（{role_name}）的内心推理：\n{think_match.group(1).strip()}\n")
-        # 剥离<think>标签，只保留发言部分
-        speech = re.sub(r"<think>.*?</think>", "", llm_result, flags=re.DOTALL).strip()
-        # 去掉可能的多余前缀
-        speech = re.sub(r"^(发言：|我说：|发言内容：)", "", speech).strip()
-        if not speech:
-            speech = llm_result.strip()
-        # 截断过长发言
+            print(f"\n[AI推理] {player.name}({role_name}):\n{think_match.group(1).strip()}")
+        speech_match = _re.search(r"【本轮发言】(.*?)$", llm_result, _re.DOTALL)
+        if speech_match:
+            speech = speech_match.group(1).strip()
+        else:
+            speech = _re.sub(r"【.*?】", "", llm_result).strip()
+        speech = _re.sub(r"^(发言：|我说：|过麦：)", "", speech).strip()
         if len(speech) > 200:
             speech = speech[:200] + "..."
         if speech:
@@ -1157,47 +1258,44 @@ def _generate_ai_speech(player, room, alive_names):
         if others and random.random() > 0.5:
             target = random.choice(others)
             speeches = [
-                f"我感觉 {target} 有点可疑，大家注意一下。",
-                f"昨晚来看，{target} 发言逻辑混乱，我怀疑是狼。",
-                "我是村民，大家可以信任我，一起找出狼人。",
-                "现在还不能确定，先观察一轮。",
+                f"感觉{target}有点可疑,大家注意一下。",
+                f"{target}发言逻辑有问题,我怀疑是狼。",
+                "没什么特别想法,先听听大家的。",
+                "别老盯着我,我就是普通村民。",
             ]
         else:
-            speeches = ["我是村民，大家可以信任我。", "场上信息还不够，先冷静分析。"]
+            speeches = ["我是村民,大家可以信任我。", "场上信息还不够,先冷静分析。"]
     elif player.role == "seer":
         if seer_result and "狼人" in seer_result and random.random() > 0.3:
             parts = seer_result.split(" 是 ")
             if len(parts) == 2:
-                return f"我是预言家，昨晚查了 {parts[0]}，结果是【狼人】！大家投他！"
+                return f"我是预言家,昨晚查了{parts[0]},【狼人】!大家投他!"
         speeches = [
-            "我是预言家，昨晚的查验结果暂时保密，等时机合适再说。",
-            "请大家信任神职，不要轻易投票好人。",
-            "狼人一定会来跳神职混淆视听，大家小心。",
+            "我是预言家,昨晚查验结果暂时保密。",
+            "狼人一定会悍跳,大家小心。",
         ]
     elif player.role == "witch":
         speeches = [
-            "我是村民，大家一起分析。",
-            "昨晚的情况大家都清楚了，谁最可疑？",
-            "发言顺序靠后的玩家要注意，有时候狼人喜欢跟风发言。",
+            "我是村民,大家一起分析。",
+            "刚才那人说话方式很怪,感觉有点刻意。",
+            "第一天乱投没意思,先看看。",
         ]
     else:
         if alive_names:
             suspect = random.choice(alive_names)
             speeches = [
-                f"我觉得 {suspect} 的发言有点问题，大家关注一下。",
-                "先听听预言家的意见，再做决定。",
-                "不要乱投票，一定要有依据。",
-                "我没有特殊信息，跟随大家的判断。",
-                f"场上还有狼人，我倾向于投 {suspect}。",
+                f"觉得{suspect}发言有问题,大家关注一下。",
+                "先听听预言家的意见。",
+                "不要乱投票,一定要有依据。",
             ]
         else:
-            speeches = ["我没有什么特别的信息，先观察一下。"]
+            speeches = ["没什么特别信息,先观察。"]
 
     return random.choice(speeches)
 
 
 def _llm_decide_vote(player, room):
-    """用 LLM 决定投票目标，返回目标名字或 None（失败时）"""
+    """用 LLM 决定投票目标,返回目标名字或 None(失败时)"""
     if not USE_LLM:
         return None
     alive = room.alive_players_except(player.id)
@@ -1210,17 +1308,17 @@ def _llm_decide_vote(player, room):
     wolf_names = [w.name for w in wolves]
 
     if player.role == "werewolf":
-        sys_prompt = f"""你是狼人杀中的狼人玩家"{player.name}"。你的狼人队友：{', '.join(n for n in wolf_names if n != player.name) or '无'}。
-你需要投票给一个好人（非狼人）。请只回复一个玩家名字，不要加任何解释。"""
+        sys_prompt = f"""你是狼人杀中的狼人玩家"{player.name}"。你的狼人队友:{', '.join(n for n in wolf_names if n != player.name) or '无'}。
+你需要投票给一个好人(非狼人)。请只回复一个玩家名字,不要加任何解释。"""
     else:
         sys_prompt = f"""你是狼人杀中的{role_name}玩家"{player.name}"。
-你需要投票给你认为最可能是狼人的玩家。请只回复一个玩家名字，不要加任何解释。"""
+你需要投票给你认为最可能是狼人的玩家。请只回复一个玩家名字,不要加任何解释。"""
 
     game_ctx = _build_game_context(room, player)
     user_prompt = f"""{game_ctx}
 
-存活可投票玩家：{', '.join(alive_names)}
-请选择你要投票的目标（只回复一个名字）："""
+存活可投票玩家:{', '.join(alive_names)}
+请选择你要投票的目标(只回复一个名字):"""
 
     result = _call_deepseek(sys_prompt, user_prompt, max_tokens=20)
     if result:
@@ -1248,7 +1346,7 @@ def _run_vote(room_id, token):
         "state": room.get_state(),
     }, room=room_id)
 
-    # AI自动投票（在VOTE_TIME秒内随机投）
+    # AI自动投票(在VOTE_TIME秒内随机投)
     for p in room.get_alive_players():
         if p.is_ai:
             socketio.start_background_task(_ai_vote, room_id, p.id, token)
@@ -1260,12 +1358,12 @@ def _run_vote(room_id, token):
     if not room or room._phase_token != token or room.phase != "vote":
         return
 
-    # 超时未投票的玩家自动弃权（不投）
+    # 超时未投票的玩家自动弃权(不投)
     _resolve_vote(room_id, token)
 
 
 def _ai_vote(room_id, player_id, token):
-    """AI投票（随机延迟，优先使用LLM决策）"""
+    """AI投票(随机延迟,优先使用LLM决策)"""
     socketio.sleep(random.uniform(3, min(VOTE_TIME - 8, 15)))
     room = rooms.get(room_id)
     if not room or room._phase_token != token or room.phase != "vote":
@@ -1288,7 +1386,7 @@ def _ai_vote(room_id, player_id, token):
             voted_name = None
 
     if not voted_name:
-        # 降级：基于规则投票
+        # 降级:基于规则投票
         wolves = room.get_werewolves()
         wolf_names = [w.name for w in wolves]
         seer_result = room.night_actions.get("seer_result", "")
@@ -1302,11 +1400,11 @@ def _ai_vote(room_id, player_id, token):
         else:
             voted = random.choice(alive)
 
-    # 二次检查 room 状态（LLM调用可能耗时）
+    # 二次检查 room 状态(LLM调用可能耗时)
     room = rooms.get(room_id)
     if not room or room._phase_token != token or room.phase != "vote":
         return
-    if player.vote:  # 已经投票了（防重）
+    if player.vote:  # 已经投票了(防重)
         return
 
     player.vote = voted.name
@@ -1330,8 +1428,8 @@ def _resolve_vote(room_id, token, is_pk=False):
     from collections import Counter
     tally = Counter(room.votes.values())
     if not tally:
-        # 无人投票，直接进入下一夜
-        room.add_sys_msg("本轮无人投票，游戏继续。")
+        # 无人投票,直接进入下一夜
+        room.add_sys_msg("本轮无人投票,游戏继续。")
         socketio.emit("vote_result", {
             "result": "无人投票",
             "tally": {},
@@ -1352,13 +1450,13 @@ def _resolve_vote(room_id, token, is_pk=False):
         if p and p.alive:
             p.alive = False
             dead_names.append(top_voted[0])
-            room.add_sys_msg(f"【投票】{top_voted[0]}（{ROLES[p.role]['name']}）被投票出局！")
+            room.add_sys_msg(f"【投票】{top_voted[0]}({ROLES[p.role]['name']})被投票出局!")
 
     phase_name = "pk_result" if is_pk else "vote_result"
     room.phase = phase_name
 
     socketio.emit("vote_result", {
-        "result": f"{top_voted[0]} 被投票出局" if len(top_voted) == 1 else f"平票：{'、'.join(top_voted)}",
+        "result": f"{top_voted[0]} 被投票出局" if len(top_voted) == 1 else f"平票:{'、'.join(top_voted)}",
         "tally": dict(tally),
         "dead": dead_names,
         "dead_roles": {name: ROLES[room.get_player_by_name(name).role]["name"] for name in dead_names if room.get_player_by_name(name)},
@@ -1396,7 +1494,7 @@ def _run_vote_last_words(room_id, token, dead_humans, pk_candidates):
 
     room.phase = "last_words"
     for dp in dead_humans:
-        room.add_sys_msg(f"【遗言】{dp.name}（{ROLES[dp.role]['name']}）请发言（30秒）")
+        room.add_sys_msg(f"【遗言】{dp.name}({ROLES[dp.role]['name']})请发言(30秒)")
         room.awaiting_speech_for = dp.id
 
         socketio.emit("last_words_start", {
@@ -1552,7 +1650,7 @@ def _night_phase_new_round(room_id, token):
     room = rooms.get(room_id)
     if not room or room._phase_token != token or room.phase == "end":
         return
-    # 更新token，进入新的夜间循环
+    # 更新token,进入新的夜间循环
     _night_phase(room_id)
 
 
@@ -1629,7 +1727,7 @@ def on_night_action(data):
     if room.phase == "role_kill" and player.role == "werewolf":
         room.night_actions["kill_target"] = target_name
         emit("action_confirmed", {"action": "kill", "target": target_name})
-        # 通知所有狼人队友（包含操作者自己）
+        # 通知所有狼人队友(包含操作者自己)
         wolves = room.get_werewolves()
         for w in wolves:
             if w.sid:
@@ -1637,7 +1735,7 @@ def on_night_action(data):
                     "player_name": player.name,
                     "target": target_name,
                 }, room=w.sid)
-        # 更新token，让原等待任务（NIGHT_WAIT超时）检查失败，避免双重推进
+        # 更新token,让原等待任务(NIGHT_WAIT超时)检查失败,避免双重推进
         new_token = generate_id()
         room._phase_token = new_token
         socketio.start_background_task(_phase_seer, room_id, new_token)
@@ -1649,7 +1747,7 @@ def on_night_action(data):
             room.night_actions["seer_target"] = target_name
             room.night_actions["seer_result"] = f"{target_name} 是 {result}"
             emit("seer_result_private", {"seer_result": room.night_actions["seer_result"]})
-        # 更新token，让原等待任务失效
+        # 更新token,让原等待任务失效
         new_token = generate_id()
         room._phase_token = new_token
         socketio.start_background_task(_phase_witch, room_id, new_token)
@@ -1657,37 +1755,25 @@ def on_night_action(data):
     elif room.phase == "role_witch" and player.role == "witch":
         witch = player
         if action == "heal" and witch.witch_heal:
-            # 只记录解药意向，不立即结算（等待confirm/skip再结算）
             kt = room.night_actions.get("kill_target")
             if kt:
                 room.night_actions["witch_heal"] = kt
                 witch.witch_heal = False
                 emit("action_confirmed", {"action": "heal", "target": kt})
-            # 标准规则：用了解药后不能再用毒药，直接结算
-            room.night_actions["witch_poison"] = None  # 同夜不能既救人又毒人
-            if room.night_actions.get("witch_heal") is False:
-                room.night_actions["witch_heal"] = None
+            # 用了解药后不能再用毒药，直接结算
+            room.night_actions["witch_poison"] = None
             token = room._phase_token
             socketio.start_background_task(_resolve_night, room_id, token)
             return
         elif action == "poison" and witch.witch_poison and target_name:
-            # 毒药已选，立即结算
+            # 毒药已选,立即结算
             room.night_actions["witch_poison"] = target_name
             witch.witch_poison = False
             emit("action_confirmed", {"action": "poison", "target": target_name})
         elif action == "skip":
-            # 女巫确认跳过（不用毒药或者整体跳过）
-            if room.night_actions.get("witch_heal") is False:
-                room.night_actions["witch_heal"] = None
-            if room.night_actions.get("witch_poison") is False:
-                room.night_actions["witch_poison"] = None
+            pass  # 跳过: witch_heal=None, witch_poison=None（未使用），无需额外操作
 
-        # poison/skip 触发结算，确保 False 状态清空
-        if room.night_actions.get("witch_heal") is False:
-            room.night_actions["witch_heal"] = None
-        if room.night_actions.get("witch_poison") is False:
-            room.night_actions["witch_poison"] = None
-
+        # poison/skip/heal 所有分支最终都走这里结算
         token = room._phase_token
         socketio.start_background_task(_resolve_night, room_id, token)
 
@@ -1707,7 +1793,7 @@ def on_speech(data):
 
     speech = data.get("content", "").strip()
     if not speech:
-        speech = "（过）"
+        speech = "(过)"
 
     # 遗言阶段
     if room.phase == "last_words" and room.awaiting_speech_for == player.id:
@@ -1723,7 +1809,7 @@ def on_speech(data):
         }, room=room_id)
         return
 
-    # 白天发言阶段：必须同时满足：(1) phase正确 (2) 玩家存活 (3) 当前轮到该玩家
+    # 白天发言阶段:必须同时满足:(1) phase正确 (2) 玩家存活 (3) 当前轮到该玩家
     if room.phase not in ("discussion", "pk_discussion"):
         return
     if not player.alive:
@@ -1731,7 +1817,7 @@ def on_speech(data):
     if room.awaiting_speech_for != player.id:
         return
 
-    # 记录发言时的上下文（用于延迟推进时的二次验证）
+    # 记录发言时的上下文(用于延迟推进时的二次验证)
     token = room._phase_token
     cur_phase = room.phase
     my_index = room.turn_index  # 捕获发言时的 turn_index
@@ -1756,16 +1842,16 @@ def on_speech(data):
     }, room=room_id)
 
     def _delayed_advance():
-        """延迟推进到下一个发言者（二次验证防止竞态）"""
+        """延迟推进到下一个发言者(二次验证防止竞态)"""
         socketio.sleep(0.5)
         room = rooms.get(room_id)
         if not room:
             return
-        # 二次验证：token 和 phase 必须与发言时一致，否则说明阶段已切换，不推进
+        # 二次验证:token 和 phase 必须与发言时一致,否则说明阶段已切换,不推进
         if room._phase_token != token or room.phase != cur_phase:
             return
-        # turn_index 必须等于 my_index+1（说明中间没有其他玩家被处理），
-        # 否则说明已有其他逻辑修改了 turn_index（避免重复推进）
+        # turn_index 必须等于 my_index+1(说明中间没有其他玩家被处理),
+        # 否则说明已有其他逻辑修改了 turn_index(避免重复推进)
         if room.turn_index != my_index + 1:
             return
         if cur_phase == "discussion":
@@ -1811,7 +1897,7 @@ def on_vote(data):
         "state": room.get_state(),
     }, room=room_id)
 
-    # 狼人队友之间互发投票情报（只有狼人能看到其他狼人的票）
+    # 狼人队友之间互发投票情报(只有狼人能看到其他狼人的票)
     if player.role == "werewolf":
         wolves = room.get_werewolves()
         for w in wolves:

@@ -84,6 +84,11 @@ Page({
     // toast
     toastMsg: '',
     toastShow: false,
+
+    // persona modal
+    showPersonaModal: false,
+    personaList: [],
+    selectedPersona: null,
   },
 
   _timerInterval: null,
@@ -623,12 +628,59 @@ Page({
   },
 
   async addAI() {
+    // 弹出人设选择框（/api/personas 是 GET，需单独处理）
     try {
-      await this._request(`/api/room/${this.data.myRoomId}/add-ai`, {})
-      this._toast('AI玩家已添加')
+      const personasRes = await new Promise((resolve, reject) => {
+        wx.request({
+          url: app.globalData.serverUrl + '/api/personas',
+          method: 'GET',
+          success: resolve,
+          fail: reject,
+        })
+      })
+      const personas = personasRes.data?.personas || {}
+      const list = Object.entries(personas).map(([key, val]) => ({ key, ...val }))
+      if (list.length === 0) {
+        // API 返回空，直接添加随机AI
+        await this._request(`/api/room/${this.data.myRoomId}/add-ai`, {})
+        this._toast('AI玩家已添加（随机风格）')
+        return
+      }
+      this.setData({ showPersonaModal: true, personaList: list, selectedPersona: null })
+    } catch (e) {
+      // API 失败时直接添加随机AI
+      try {
+        await this._request(`/api/room/${this.data.myRoomId}/add-ai`, {})
+        this._toast('AI玩家已添加（随机风格）')
+      } catch (e2) {
+        this._toast('添加AI失败')
+      }
+    }
+  },
+
+  selectPersona(e) {
+    this.setData({ selectedPersona: e.currentTarget.dataset.key })
+  },
+
+  async confirmAddAI() {
+    const { selectedPersona, myRoomId } = this.data
+    this.setData({ showPersonaModal: false })
+    try {
+      if (selectedPersona) {
+        await this._request(`/api/room/${myRoomId}/add-ai-preset`, { persona: selectedPersona })
+        const name = this.data.personaList.find(p => p.key === selectedPersona)?.name || ''
+        this._toast(`已添加${name}AI`)
+      } else {
+        await this._request(`/api/room/${myRoomId}/add-ai`, {})
+        this._toast('AI玩家已添加（随机风格）')
+      }
     } catch (e) {
       this._toast('添加AI失败')
     }
+  },
+
+  closePersonaModal() {
+    this.setData({ showPersonaModal: false })
   },
 
   async startGame() {

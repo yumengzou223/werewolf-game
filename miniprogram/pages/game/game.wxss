@@ -254,3 +254,22 @@ page { background: #0f0f1a; }
 }
 .seer-modal-title { font-size: 26rpx; color: #f39c12; font-weight: bold; }
 .seer-modal-result { font-size: 40rpx; font-weight: bold; color: #fff; }
+
+/* AI人设选择弹窗 */
+.persona-modal {
+  background: #1a1a2e; border: 2rpx solid rgba(102,126,234,0.5); border-radius: 32rpx;
+  padding: 48rpx 40rpx; text-align: center; max-width: 600rpx; width: 90%;
+}
+.persona-modal-title { font-size: 32rpx; font-weight: bold; color: #fff; display: block; margin-bottom: 32rpx; }
+.persona-list { display: flex; flex-direction: column; gap: 16rpx; margin-bottom: 32rpx; text-align: left; }
+.persona-item {
+  background: rgba(255,255,255,0.06); border: 2rpx solid rgba(255,255,255,0.1);
+  border-radius: 20rpx; padding: 24rpx 28rpx;
+}
+.persona-item.selected {
+  background: rgba(102,126,234,0.2); border-color: #667eea;
+}
+.persona-name { font-size: 28rpx; font-weight: bold; color: #fff; display: block; margin-bottom: 6rpx; }
+.persona-desc { font-size: 22rpx; color: #aaa; }
+.persona-actions { display: flex; gap: 20rpx; }
+.persona-actions .btn-secondary, .persona-actions .btn-primary { flex: 1; }

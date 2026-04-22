@@ -237,4 +237,27 @@
     </view>
   </view>
 
+  <!-- AI人设选择弹窗 -->
+  <view wx:if="{{showPersonaModal}}" class="modal-overlay" bindtap="closePersonaModal">
+    <view class="persona-modal" catchtap="">
+      <text class="persona-modal-title">🤖 选择AI人设</text>
+      <view class="persona-list">
+        <view
+          wx:for="{{personaList}}"
+          wx:key="key"
+          class="persona-item {{selectedPersona === item.key ? 'selected' : ''}}"
+          bindtap="selectPersona"
+          data-key="{{item.key}}"
+        >
+          <view class="persona-name">{{item.name}}</view>
+          <text class="persona-desc">{{item.desc}}</text>
+        </view>
+      </view>
+      <view class="persona-actions">
+        <button class="btn-secondary" bindtap="closePersonaModal">取消</button>
+        <button class="btn-primary" bindtap="confirmAddAI">确认添加</button>
+      </view>
+    </view>
+  </view>
+
 </view>
