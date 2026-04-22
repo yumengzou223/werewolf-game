@@ -239,9 +239,9 @@
 
   <!-- AI人设选择弹窗 -->
   <view wx:if="{{showPersonaModal}}" class="modal-overlay" bindtap="closePersonaModal">
-    <view class="persona-modal" catchtap="">
+    <view class="persona-modal">
       <text class="persona-modal-title">🤖 选择AI人设</text>
-      <view class="persona-list">
+      <view class="persona-list" catchtap="">
         <view
           wx:for="{{personaList}}"
           wx:key="key"
