@@ -659,6 +659,7 @@ Page({
   },
 
   selectPersona(e) {
+    e.stopPropagation()
     const key = e.currentTarget.dataset.key
     console.log('[selectPersona] tapped key=', key, 'dataset=', e.currentTarget.dataset)
     this.setData({ selectedPersona: key })
