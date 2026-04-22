@@ -133,6 +133,7 @@ class GameRoom:
         self.current_role_turn = None
         # 用于防止投票/夜间阶段重复推进
         self._phase_token = None
+        self._night_resolving = False  # 防止 _resolve_night 重复进入的幂等锁
 
     def add_player(self, player):
         if len(self.players) >= MAX_PLAYERS:
@@ -588,6 +589,10 @@ def _resolve_night(room_id, token):
     room = rooms.get(room_id)
     if not room or room._phase_token != token or room.phase == "end":
         return
+    # 【幂等锁】防止并发/重复调用导致结算逻辑执行多次
+    if room._night_resolving:
+        return
+    room._night_resolving = True
 
     kill_t = room.night_actions.get("kill_target")
     heal_t = room.night_actions.get("witch_heal")   # None=跳过，玩家名=救了谁
@@ -629,14 +634,27 @@ def _resolve_night(room_id, token):
 
     socketio.sleep(1)
 
+    # 【保护】重新验证：sleep 期间游戏可能已结束
+    room = rooms.get(room_id)
+    if not room or room._phase_token != token or room.phase == "end":
+        room._night_resolving = False
+        return
+
     winner = room.check_win()
     if winner:
         socketio.sleep(2)
+        room._night_resolving = False
         _end_game(room_id)
         return
 
-    # 遗言阶段：如果死亡玩家存在，给他们发言机会
+    # 【保护】进入遗言前再次验证
     socketio.sleep(3)
+    room = rooms.get(room_id)
+    if not room or room._phase_token != token or room.phase == "end":
+        room._night_resolving = False
+        return
+    # 结算完成，释放幂等锁，然后启动遗言阶段
+    room._night_resolving = False
     _run_last_words(room_id, token, dead_players)
 
 
@@ -680,7 +698,7 @@ def _run_last_words(room_id, token, dead_players):
             socketio.sleep(1)
             elapsed += 1
             room = rooms.get(room_id)
-            if not room or room._phase_token != token:
+            if not room or room._phase_token != token or room.phase != "last_words":
                 return
             if room._speech_done or room.awaiting_speech_for != dp.id:
                 break
@@ -688,6 +706,10 @@ def _run_last_words(room_id, token, dead_players):
         if room:
             room.awaiting_speech_for = None
 
+    # 【保护】遗言全部结束后再次验证再进入白天
+    room = rooms.get(room_id)
+    if not room or room._phase_token != token or room.phase == "end":
+        return
     socketio.start_background_task(_start_day, room_id, token)
 
 
@@ -810,19 +832,20 @@ def _advance_speaker(room_id, token):
                 return
             if room._speech_done or room.awaiting_speech_for != speaker.id:
                 return  # 已发言，on_speech 会继续推进
-        # 真正超时
+        # 真正超时（需同时验证：phase未变 + 玩家仍存活 + 仍轮到该玩家）
         room = rooms.get(room_id)
         if not room or room._phase_token != token:
             return
-        if room.awaiting_speech_for == speaker.id:
-            room.awaiting_speech_for = None
-            room.turn_index += 1
-            socketio.emit("speaking_end", {
-                "speaker_id": speaker.id,
-                "state": room.get_state(),
-            }, room=room_id)
-            socketio.sleep(1)
-            _advance_speaker(room_id, token)
+        if room.phase not in ("discussion",) or not speaker.alive or room.awaiting_speech_for != speaker.id:
+            return
+        room.awaiting_speech_for = None
+        room.turn_index += 1
+        socketio.emit("speaking_end", {
+            "speaker_id": speaker.id,
+            "state": room.get_state(),
+        }, room=room_id)
+        socketio.sleep(1)
+        _advance_speaker(room_id, token)
 
 
 def _ai_speak(room_id, player_id, token):
@@ -1465,7 +1488,8 @@ def _advance_pk_speaker(room_id, token):
         room = rooms.get(room_id)
         if not room or room._phase_token != token:
             return
-        if room.awaiting_speech_for == speaker.id:
+        # 【保护】超时结算时也验证玩家仍存活
+        if room.phase == "pk_discussion" and speaker.alive and room.awaiting_speech_for == speaker.id:
             room.awaiting_speech_for = None
             room.turn_index += 1
             socketio.emit("speaking_end", {"speaker_id": speaker.id, "state": room.get_state()}, room=room_id)
@@ -1699,15 +1723,20 @@ def on_speech(data):
         }, room=room_id)
         return
 
-    # 白天发言阶段
+    # 白天发言阶段：必须同时满足：(1) phase正确 (2) 玩家存活 (3) 当前轮到该玩家
     if room.phase not in ("discussion", "pk_discussion"):
         return
     if not player.alive:
         return
     if room.awaiting_speech_for != player.id:
         return
-    room._speech_done = True
 
+    # 记录发言时的上下文（用于延迟推进时的二次验证）
+    token = room._phase_token
+    cur_phase = room.phase
+    my_index = room.turn_index  # 捕获发言时的 turn_index
+
+    room._speech_done = True
     player.has_spoken = True
     room.add_message(player.id, speech, "speech")
     room.awaiting_speech_for = None
@@ -1720,17 +1749,25 @@ def on_speech(data):
         "state": room.get_state(),
     }, room=room_id)
 
-    token = room._phase_token
-    cur_phase = room.phase
     room.turn_index += 1
-    room.awaiting_speech_for = None
     socketio.emit("speaking_end", {
         "speaker_id": player.id,
         "state": room.get_state(),
     }, room=room_id)
 
     def _delayed_advance():
+        """延迟推进到下一个发言者（二次验证防止竞态）"""
         socketio.sleep(0.5)
+        room = rooms.get(room_id)
+        if not room:
+            return
+        # 二次验证：token 和 phase 必须与发言时一致，否则说明阶段已切换，不推进
+        if room._phase_token != token or room.phase != cur_phase:
+            return
+        # turn_index 必须等于 my_index+1（说明中间没有其他玩家被处理），
+        # 否则说明已有其他逻辑修改了 turn_index（避免重复推进）
+        if room.turn_index != my_index + 1:
+            return
         if cur_phase == "discussion":
             _advance_speaker(room_id, token)
         elif cur_phase == "pk_discussion":
