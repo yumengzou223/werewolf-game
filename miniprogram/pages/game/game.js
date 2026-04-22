@@ -665,11 +665,13 @@ Page({
   async confirmAddAI() {
     const { selectedPersona, myRoomId } = this.data
     this.setData({ showPersonaModal: false })
+    // 防御：selectedPersona 必须有值，否则用随机添加
+    const personaToUse = selectedPersona || null
     try {
-      if (selectedPersona) {
-        await this._request(`/api/room/${myRoomId}/add-ai-preset`, { persona: selectedPersona })
-        const name = this.data.personaList.find(p => p.key === selectedPersona)?.name || ''
-        this._toast(`已添加${name}AI`)
+      if (personaToUse) {
+        await this._request(`/api/room/${myRoomId}/add-ai-preset`, { persona: personaToUse })
+        const name = this.data.personaList.find(p => p.key === personaToUse)?.name || ''
+        this._toast(`已添加 ${name} AI`)
       } else {
         await this._request(`/api/room/${myRoomId}/add-ai`, {})
         this._toast('AI玩家已添加（随机风格）')

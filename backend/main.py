@@ -1070,25 +1070,18 @@ def _call_deepseek(system_prompt, user_prompt, max_tokens=200):
 
 
 def _build_game_context(room, player):
-    """构建完整游戏上下文供LLM参考(含全局历史、死亡记录、查验记录)"""
+    """构建游戏上下文供LLM参考（仅包含当日讨论历史，不泄露死亡角色）"""
     alive = room.get_alive_players()
     dead = [p for p in room.players if not p.alive]
 
-    # 死亡记录(含角色)
-    dead_lines = []
-    for p in dead:
-        dead_lines.append(f"{p.name}({ROLES.get(p.role, {}).get('name', '?')})")
+    # 死亡记录:只显示名字，不显示角色（讨论阶段不能泄露角色）
+    dead_names_only = [p.name for p in dead]
 
-    # 全部历史发言(不截断,让LLM有完整上下文)
-    all_msgs = room.messages if room.messages else []
-    msg_lines = []
-    for m in all_msgs:
-        if m.get("type") == "system":
-            msg_lines.append(f"[系统] {m['content']}")
-        else:
-            msg_lines.append(f"第{m.get('day', room.day) if 'day' in m else '?'}天 {m['name']}:{m['content']}")
+    # 只取当天的讨论发言，不含系统公告和夜间死亡宣布
+    current_day_msgs = [m for m in (room.messages or []) if m.get("type") == "speech" and m.get("day") == room.day]
+    msg_lines = [f"{m['name']}:{m['content']}" for m in current_day_msgs]
 
-    # 预言家私有记录(只有预言家自己能用)
+    # 预言家私有记录
     seer_notes = ""
     if player.role == "seer":
         results = []
@@ -1099,13 +1092,17 @@ def _build_game_context(room, player):
         if results:
             seer_notes = "\n【你的查验记录】\n" + "\n".join(results)
 
-    ctx = f"""当前游戏状态:第 {room.day} 天
+    # 【重要规则】明确告知AI：只有存活玩家才能发言，死人不能说话
+    ctx = f"""【游戏状态】
+第 {room.day} 天
 存活玩家({len(alive)}人):{', '.join(p.name for p in alive)}
-已出局玩家:{', '.join(dead_lines) if dead_lines else '无'}
+昨夜出局:{', '.join(dead_names_only) if dead_names_only else '无人'}
 {seer_notes}
-===历史发言===
-{chr(10).join(msg_lines) if msg_lines else '(暂无)'}
-===历史结束==="""
+
+【今日讨论记录】
+{chr(10).join(msg_lines) if msg_lines else '(尚未有人发言)'}
+
+【重要规则】你是{ROLES.get(player.role, {}).get('name', player.role)}，只有【存活玩家】才能发言和被投票。死人已经不能说话。"""
     return ctx
 
 
