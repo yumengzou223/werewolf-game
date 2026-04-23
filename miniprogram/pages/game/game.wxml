@@ -246,16 +246,16 @@
           wx:for="{{personaList}}"
           wx:key="key"
           class="persona-item {{selectedPersona === item.key ? 'selected' : ''}}"
-          bindtap="selectPersona"
-          data-key="{{item.key}}"
+          data-pkey="{{item.key}}"
+          bindtap="onPersonaTap"
         >
-          <view class="persona-name" catchtap="selectPersona">{{item.name}}</view>
-          <text class="persona-desc" catchtap="selectPersona">{{item.desc}}</text>
+          <view class="persona-name">{{item.name}}</view>
+          <text class="persona-desc">{{item.desc}}</text>
         </view>
       </view>
-      <view class="persona-actions" catchtap="">
-        <button class="btn-secondary" catchtap="closePersonaModal">取消</button>
-        <button class="btn-primary" catchtap="confirmAddAI">确认添加</button>
+      <view class="persona-actions">
+        <button class="btn-secondary" bindtap="closePersonaModal">取消</button>
+        <button class="btn-primary {{selectedPersona ? '' : 'disabled'}}" bindtap="confirmAddAI">确认添加</button>
       </view>
     </view>
   </view>

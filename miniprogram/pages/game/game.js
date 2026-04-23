@@ -658,32 +658,29 @@ Page({
     }
   },
 
-  selectPersona(e) {
-    // 不需要 stopPropagation，因为父容器用了 catchtap 阻止冒泡
-    const key = e.currentTarget.dataset.key
-    console.log('[selectPersona] tapped key=', key)
+  onPersonaTap(e) {
+    // 用 data-pkey 传递选中的人设 key，避免 data-key 与微信内部 key 冲突
+    const key = e.currentTarget.dataset.pkey
+    if (!key) return
     this.setData({ selectedPersona: key })
   },
 
   async confirmAddAI() {
-    console.log('[confirmAddAI] CALLED - selectedPersona from this.data:', this.data.selectedPersona)
-    const { selectedPersona, myRoomId, personaList } = this.data
-    this.setData({ showPersonaModal: false })
-    console.log('[AI选择] selectedPersona=', selectedPersona, 'myRoomId=', myRoomId, 'list=', personaList)
-    const personaToUse = selectedPersona || null
+    // 关键：先读取选中值存局部变量，再清 modal（避免异步时序问题）
+    const chosenPersona = this.data.selectedPersona
+    const { myRoomId, personaList } = this.data
+    this.setData({ showPersonaModal: false, selectedPersona: null })
+
     try {
-      if (personaToUse) {
-        console.log('[AI选择] 调用add-ai-preset, persona=', personaToUse)
-        await this._request(`/api/room/${myRoomId}/add-ai-preset`, { persona: personaToUse })
-        const name = personaList.find(p => p.key === personaToUse)?.name || ''
-        this._toast(`已添加 ${name} AI`)
+      if (chosenPersona) {
+        await this._request(`/api/room/${myRoomId}/add-ai-preset`, { persona: chosenPersona })
+        const name = personaList.find(p => p.key === chosenPersona)?.name || ''
+        this._toast(`已添加 ${name}`)
       } else {
-        console.log('[AI选择] 调用add-ai（随机）')
         await this._request(`/api/room/${myRoomId}/add-ai`, {})
         this._toast('AI玩家已添加（随机风格）')
       }
     } catch (e) {
-      console.log('[AI选择] 失败:', e.message || e)
       this._toast('添加AI失败')
     }
   },

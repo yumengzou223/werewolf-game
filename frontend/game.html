@@ -20,8 +20,16 @@
   </div>
   <div id="waiting-players" class="players-grid"></div>
   <div class="waiting-actions">
-    <button id="btn-add-ai" class="btn-secondary" onclick="addAI()">+ 添加AI</button>
+    <button id="btn-add-ai" class="btn-secondary" onclick="openPersonaSelector()">+ 添加AI</button>
     <button id="btn-start" class="btn-primary disabled" onclick="startGame()" disabled>开始游戏</button>
+  </div>
+</div>
+
+<div id="modal-persona" class="modal" style="display:none">
+  <div class="persona-panel">
+    <h2>🎭 选择AI风格</h2>
+    <div id="persona-list" style="max-height:420px;overflow-y:auto;margin-top:12px;"></div>
+    <button class="btn-primary" onclick="closePersonaSelector()" style="margin-top:12px;width:100%">取消</button>
   </div>
 </div>
 

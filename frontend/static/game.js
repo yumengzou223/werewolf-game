@@ -1106,17 +1106,69 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// ========== API 辅助 ==========
-async function addAI() {
+async function openPersonaSelector() {
+  closePersonaSelector();
+  const modal = document.getElementById("modal-persona");
+  const list = document.getElementById("persona-list");
+  if (!modal || !list) return;
+  list.innerHTML = "<div style='color:#888;text-align:center;padding:20px'>加载中...</div>";
+  modal.style.display = "flex";
   try {
-    await fetch(`/api/room/${myRoomId}/add-ai`, {
+    const res = await fetch("/api/personas");
+    const data = await res.json();
+    const personas = data.personas || {};
+    const keys = Object.keys(personas);
+    if (!keys.length) { list.innerHTML = "<div style='color:#888;text-align:center;padding:20px'>暂无人设</div>"; return; }
+    list.innerHTML = keys.map(k => {
+      const p = personas[k];
+      return `<div class="persona-card" onclick="selectPersona('${k}')" style="cursor:pointer;border:1px solid #333;border-radius:12px;padding:12px;margin-bottom:10px;background:#1a1a2e;transition:border-color 0.2s">
+        <div style="font-size:15px;font-weight:bold;color:#fff;margin-bottom:4px">${p.name}</div>
+        <div style="font-size:12px;color:#aaa;line-height:1.5">${p.style.slice(0,60)}...</div>
+      </div>`;
+    }).join("");
+  } catch(e) {
+    list.innerHTML = "<div style='color:#e74c3c;text-align:center;padding:20px'>加载失败</div>";
+  }
+}
+
+function closePersonaSelector() {
+  const modal = document.getElementById("modal-persona");
+  if (modal) modal.style.display = "none";
+}
+
+window.selectPersona = async function(key) {
+  closePersonaSelector();
+  try {
+    const res = await fetch(`/api/room/${myRoomId}/add-ai-preset`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ persona: key }),
     });
-    showToast("AI玩家已添加");
+    if (res.ok) { showToast("AI玩家已添加"); }
+    else { const d = await res.json(); showToast(d.error || "添加失败"); }
+  } catch(e) { showToast("添加AI失败"); }
+};
+async function addAI() {
+  // 先尝试获取人设列表，如果返回空则直接添加随机AI
+  try {
+    const res = await fetch("/api/personas");
+    const data = await res.json();
+    const personas = data.personas || {};
+    const keys = Object.keys(personas);
+    if (!keys.length) {
+      //没有人设，直接添加随机AI
+      await fetch(`/api/room/${myRoomId}/add-ai`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      showToast("AI玩家已添加（随机风格）");
+      return;
+    }
+    // 显示人设选择弹窗
+    openPersonaSelector();
   } catch(e) {
-    showToast("添加AI失败");
+    // API失败时直接添加随机AI
+    try {
+      await fetch(`/api/room/${myRoomId}/add-ai`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      showToast("AI玩家已添加（随机风格）");
+    } catch(e2) { showToast("添加AI失败"); }
   }
 }
 

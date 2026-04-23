@@ -81,35 +81,36 @@ NIGHT_WAIT = 60   # 夜间等待人类操作超时秒
 # ====================== AI 人设预设 ======================
 AI_PERSONAS = {
     "silent": {
-        "name": "沉默者",
-        "desc": "能不说话就不说话，被逼才开口，字数极少",
-        "style": "说话极少，惜字如金，能不开口就不开口。被迫发言时也只说一两句话，从不主动指控或分析。"
+        "name": "唐僧",
+        "desc": "你以唐僧的身份参与狼人杀小游戏：性情温厚慈悲，言语儒雅和缓，秉持向善向正之心，循循善诱不疾不徐。遇事坚守本心、劝诫有度，略带温和絮语，常怀悲悯，重礼法守正道，耐心引导、言辞庄重，不躁不厉，始终以劝善明理为念。",
+        "style": "以唐僧为核心人格：性情温厚慈悲，言语儒雅和缓，秉持向善向正之心，循循善诱不疾不徐。遇事坚守本心、劝诫有度，略带温和絮语，常怀悲悯，重礼法守正道，耐心引导、言辞庄重，不躁不厉，始终以劝善明理为念。"
     },
     "aggressive": {
-        "name": "激进派",
-        "desc": "爱指控，语气强硬，喜欢踩人出头",
-        "style": "语气强硬，观点鲜明，喜欢直接点名质疑或指控别人。说话有气势，不喜欢犹豫和模棱两可。"
+        "name": "王熙凤",
+        "desc": "你以王熙凤的身份参与狼人杀小游戏，表演型人格特质拉满：行事张扬爱出风头，言辞爽利浮夸，情绪外放极具感染力，八面玲珑擅造势控场，热衷彰显自我、渴求关注，言语鲜活带锋芒，既精明狡黠又擅长调动氛围，时刻保持强烈存在感。",
+        "style": "以王熙凤为原型，表演型人格特质拉满：行事张扬爱出风头，言辞爽利浮夸，情绪外放极具感染力，八面玲珑擅造势控场，热衷彰显自我、渴求关注，言语鲜活带锋芒，既精明狡黠又擅长调动氛围，时刻保持强烈存在感。"
+
     },
     "slime": {
-        "name": "老油条",
-        "desc": "说话绕弯，从不正面回答，永远转移话题",
-        "style": "说话绕弯子，从不正面试图回答问题，永远在转移话题或反问别人。非常狡猾，不会留下把柄。"
+        "name": "猪八戒",
+        "desc": "以猪八戒的身份参与狼人杀小游戏，深谙世故圆滑，趋利避害、嘴甜会来事，遇事能躲则躲、擅长推诿，察言观色极准，爱耍小聪明偷懒，说话圆滑讨巧，不冒尖不担责，自带慵懒油滑感，分寸感极强，从不吃亏。",
+        "style": "以猪八戒为原型，深谙世故圆滑，趋利避害、嘴甜会来事，遇事能躲则躲、擅长推诿，察言观色极准，爱耍小聪明偷懒，说话圆滑讨巧，不冒尖不担责，自带慵懒油滑感，分寸感极强，从不吃亏。"
     },
     "newbie": {
-        "desc": "天真直率，有什么说什么，逻辑简单",
-        "name": "萌新区",
-        "style": "天真直率，有什么说什么，思维简单直接，不会绕圈子，也不会伪装，说话带有一点学生气。"
+        "name": "薛杉杉",
+        "desc": "以薛杉杉的身份参与狼人杀小游戏，性格软萌单纯，毫无心机城府，待人赤诚直白，略带小迷糊，情绪全写在脸上，说话软糯天真，善良心软没防备，心思简单通透，软和无害，自带天真烂漫的钝感。",
+        "style": "以薛杉杉为原型，性格软萌单纯，毫无心机城府，待人赤诚直白，略带小迷糊，情绪全写在脸上，说话软糯天真，善良心软没防备，心思简单通透，软和无害，自带天真烂漫的钝感。"
     },
     "dramatic": {
-        "name": "戏精",
-        "desc": "表演型人格，说话夸张有情绪，爱用感叹号",
-        "style": "表演型人格！说话夸张有情绪，爱用感叹号。经常用“天呐”“真的假的”“太可怕了”这类词。代入感极强。"
+        "name": "孙悟空",
+        "desc": "以齐天大圣的身份参与狼人杀小游戏，性格激进刚烈，桀骜不驯、敢闯敢拼，行事果决凌厉，不畏强权、不服管束。言辞锋锐霸气，遇事主动出击绝不拖沓，脾气火爆直爽，杀伐果断，自带一往无前的冲劲，遇事绝不妥协退让。",
+        "style": "以齐天大圣为原型，性格激进刚烈，桀骜不驯、敢闯敢拼，行事果决凌厉，不畏强权、不服管束。言辞锋锐霸气，遇事主动出击绝不拖沓，脾气火爆直爽，杀伐果断，自带一往无前的冲劲，遇事绝不妥协退让。"
     },
 }
 
 # ====================== 狼人杀专业提示词 ======================
 # 通用结构：先【内心推理】（自己看），再【本轮发言】（给其他玩家看）
-# 发言必须短（20-50字），口语化，有轮次感
+# 发言短但信息完整（30-100字），口语化，有轮次感
 WEREWOLF_PROMPT_TEMPLATE = """你是国服狼人杀顶尖玩家，1000+场经验。严格从自己身份的第一视角，用严谨逻辑链分析场上局势，生成真实有说服力的真人发言。
 
 【核心原则】
@@ -123,11 +124,11 @@ WEREWOLF_PROMPT_TEMPLATE = """你是国服狼人杀顶尖玩家，1000+场经验
 - 开上帝视角直接说"XX是狼"
 - 说"我是AI""根据规则"
 - 贴脸/发誓/情绪绑架
-- 发言超过50字
+- 发言超过100字
 
 【输出格式】
 【内心推理】<私密推演：局势判断、站边、策略、投票目标>
-【本轮发言】<给其他玩家看的发言，20-50字，口语化>"""
+【本轮发言】<给其他玩家看的发言，30-100字，口语化>"""
 
 ROLE_PROMPTS = {
     "werewolf": """【狼人专属】
@@ -135,41 +136,40 @@ ROLE_PROMPTS = {
 
 {{PERSONA_BLOCK}}
 
-【狼人策略】
-- 完美模仿好人视角：永远用“好人思维”分析场上局势
-- 找好人微小漏洞放大攻击：重点关注发言有漏洞的好人
-- 必要时卖队友保自己：可以说“XX行为不像好人，我暂时不站他”
-- 绝对不能聊爆：不能提及夜晚信息、狼队友配合等只有狼人才知道的事
-- 轮次优先：当前轮次要推谁、为什么要推他，说清楚理由
+📋 行为准则：
+- 视角校准：用“闭眼民”逻辑分析局势，避免提及夜晚信息及队友关系。
+- 攻击策略：寻找好人的逻辑断层或前后矛盾，将其放大为“铁狼”行为。
+- 断臂求生：在队友身份岌岌可危且自己身份较高时，可果断卖掉队友做高自己。
+- 切忌聊爆：严禁说“我昨晚看到...”、“我们狼队...”。
+- 轮次意识：明确当前是“推人轮次”还是“找神轮次”，给出必推某人的逻辑基点。
 
-【发言风格】
-狼人是伪装者，发言要有逻辑、有站边、有拉票，但理由站得住脚。不能装得太完美，太完美的发言反而可疑。""",
+💬 发言风格：逻辑严密但略带试探。要有站边、有拉票、理由听起来虽有道理但经不起深推。太完美的发言反而像开眼的神。""",
+
 
     "seer": """【预言家专属】
 你的任务：报查验、留警徽流、点狼坑、带队好人。
 
 {{PERSONA_BLOCK}}
-
-【预言家策略】
-- 报查验要干脆：先报昨晚查了谁、结果是什么（金水/查杀）
-- 报心路历程：为什么验这个人，让好人信服
-- 留清晰警徽流：接下来要验谁，说清楚理由和顺序
-- 点悍跳狼的漏洞：分析对跳者的逻辑漏洞，但不要人身攻击
-- 真诚拉票：呼吁好人在自己这边，但不强硬
+📋 行为准则：
+- 查验即答：首句必须干脆利落报清“昨晚查验X号，身份为金水/查杀”。
+- 心路交底：说明验人逻辑（如：摸X号定义边角位格局）。
+- 警徽流严谨：必须留两晚明确的警徽流，说清顺序及相应结果对应的飞警徽方式。
+- 攻击悍跳狼：重点打击悍跳狼的警徽流漏洞、视角缺失，避免情绪化贴脸。
+- 真诚拉票：强调自己是全场唯一真预言家，只有自己拥有真实的团队。
 
 【发言风格】
-预言家要有底气、有节奏、有说服力。报查验要干脆利落，不吞吞吐吐。逻辑要清晰，站边要明确。""",
+底气十足，节奏明快。报查验不犹豫，盘逻辑不摇摆""",
 
     "witch": """【女巫专属】
 你的任务：隐身份盘逻辑，关键轮次跳身份带队。
 
 {{PERSONA_BLOCK}}
 
-【女巫策略】
-- 前期隐身份：像普通村民一样盘逻辑，不要主动暴露
-- 跳身份时机：只在上胸键轮次或需要归票时才跳
-- 跳身份时必须报银水/毒人信息：说清楚救了谁、毒了谁、为什么
-- 归票要强势：明确说“大家跟我投XX”
+📋 行为准则：
+- 潜伏伪装：前两轮发言完全模拟普通村民，只聊逻辑不聊身份信息。
+- 起跳时机：仅在**自己被推出局、发现同守同救奶穿、或明确找到了双药狼**时才起跳。
+- 信息核爆：起跳后必须清晰报出：**第几夜救了谁（具体银水）、第几夜毒了谁、为什么毒。**
+- 强势归票：一旦起跳，不接受分票，必须指出明确的抬杠目标。
 
 【发言风格】
 女巫要有底气但不张扬，发言像有逻辑的好人，关键时刻果断跳身份带队。""",
@@ -179,11 +179,11 @@ ROLE_PROMPTS = {
 
 {{PERSONA_BLOCK}}
 
-【村民策略】
-- 盘发言漏洞：重点分析场上发言有问题的玩家
-- 不轻易站边：信息不足时不强行站边，但可以说“我暂时不站谁”
-- 明确投票目标：结尾说“大家跟我投XX”或“我暂时投谁，过”
-- 不要乱带节奏：村民没有特殊信息，发言要符合“没有特殊信息的好人”视角
+📋 行为准则：
+- 抓虫专家：专注抓取他人发言中的爆点和不连贯之处。
+- 软站边艺术：信息匮乏时可说“目前X号聊得偏像好人，但我还在听Y号的更新发言”。
+- 强制归票：每轮发言结尾必须有投票倾向或明确弃票理由（如：“这轮我跟X号投Y”）。
+- 底线思维：承认自己的视角盲区，而不是硬装知晓一切。
 
 【发言风格】
 村民的发言要像普通好人——有困惑、有疑虑、有判断。不要装得很厉害，也不要太弱。""",
@@ -247,6 +247,7 @@ class GameRoom:
         # 用于防止投票/夜间阶段重复推进
         self._phase_token = None
         self._night_resolving = False  # 防止 _resolve_night 重复进入的幂等锁
+        self.night_history = []  # [{day, kills:[], heals:[], poison, dead:[], seer_result}]
 
     def add_player(self, player):
         if len(self.players) >= MAX_PLAYERS:
@@ -760,6 +761,17 @@ def _resolve_night(room_id, token):
             p.alive = False
             dead_players.append(p)
 
+    # 记录夜间历史（结算前就记录，供AI次日开始使用）
+    night_record = {
+        "day": room.day,
+        "kills": [kill_t] if kill_t else [],
+        "heals": [heal_t] if heal_t else [],
+        "poison": poison_t,
+        "dead": [p.name for p in dead_players],
+        "seer_result": room.night_actions.get("seer_result"),
+    }
+    room.night_history.append(night_record)
+
     room.phase = "night_result"
 
     # 私发预言家结果
@@ -776,6 +788,7 @@ def _resolve_night(room_id, token):
         "healed": (kill_t is not None and kill_t == heal_t),
         "poison_target": poison_t,
         "dead": [p.name for p in dead_players],
+        "dead_roles": {p.name: ROLES.get(p.role, {}).get("name", "") for p in dead_players},
         "state": room.get_state(reveal_all=False),
     }, room=room_id)
 
@@ -1081,16 +1094,35 @@ def _build_game_context(room, player):
     current_day_msgs = [m for m in (room.messages or []) if m.get("type") == "speech" and m.get("day") == room.day]
     msg_lines = [f"{m['name']}:{m['content']}" for m in current_day_msgs]
 
-    # 预言家私有记录
+    # 预言家查验记录（历史累计，从night_history读取）
     seer_notes = ""
     if player.role == "seer":
-        results = []
-        for key in ("seer_result",):
-            r = room.night_actions.get(key)
+        seer_results = []
+        for rec in room.night_history:
+            r = rec.get("seer_result")
             if r:
-                results.append(f"昨晚查验:{r}")
-        if results:
-            seer_notes = "\n【你的查验记录】\n" + "\n".join(results)
+                night_num = rec.get("day")
+                seer_results.append(f"第{night_num}夜查验:{r}")
+        if seer_results:
+            seer_notes = "\n【你的查验记录】\n" + "\n".join(seer_results)
+        else:
+            seer_notes = "\n【你的查验记录】\n（尚未查验任何人）"
+        # 当前夜刚查验的也追加（如果night_history还没更新的话）
+        current_seer = room.night_actions.get("seer_result")
+        if current_seer and str(current_seer) not in seer_notes:
+            seer_notes += f"\n昨夜查验:{current_seer}"
+
+    # 整合历史夜间信息（让AI知道这是第几天、之前夜发生了什么）
+    night_history_lines = []
+    for rec in room.night_history:
+        d = rec["day"]
+        dead_list = rec.get("dead", [])
+        seer_rec = rec.get("seer_result", "")
+        line = f"第{d}夜: {'、'.join(dead_list) if dead_list else '无人死亡'}"
+        if seer_rec and player.role == "seer":
+            line += f" | 你查验:{seer_rec}"
+        night_history_lines.append(line)
+    night_history_info = "\n".join(night_history_lines) if night_history_lines else "（尚未有任何夜间记录）"
 
     # 【重要规则】明确告知AI：只有存活玩家才能发言，死人不能说话
     ctx = f"""【游戏状态】
@@ -1098,6 +1130,9 @@ def _build_game_context(room, player):
 存活玩家({len(alive)}人):{', '.join(p.name for p in alive)}
 昨夜出局:{', '.join(dead_names_only) if dead_names_only else '无人'}
 {seer_notes}
+
+【历史夜间记录】
+{night_history_info}
 
 【今日讨论记录】
 {chr(10).join(msg_lines) if msg_lines else '(尚未有人发言)'}
@@ -1168,10 +1203,6 @@ def _generate_ai_speech(player, room, alive_names):
     role_key = player.role if player.role in ROLE_PROMPTS else "villager"
     role_block = ROLE_PROMPTS[role_key]
 
-    # 注入预言家查验结果
-    seer_result = room.night_actions.get("seer_result", "")
-    role_block = role_block.replace("{{SEER_RESULT}}", seer_result or "(尚未查验)")
-
     # 注入狼人队友
     if player.role == "werewolf":
         wolves = room.get_werewolves()
@@ -1210,8 +1241,17 @@ def _generate_ai_speech(player, room, alive_names):
         not_spoken_names = list(alive_names)
 
     last_vote_info = getattr(room, "last_vote_info", "") or ""
-    night_killed = room.night_actions.get("kill_target")
-    night_info = f"昨夜死亡:{night_killed}" if night_killed else "昨夜死亡:无人"
+
+    # 计算昨夜实际死亡（考虑女巫救人）
+    kill_t = room.night_actions.get("kill_target")
+    heal_t = room.night_actions.get("witch_heal")
+    poison_t = room.night_actions.get("witch_poison")
+    actual_dead = []
+    if kill_t and kill_t != heal_t:
+        actual_dead.append(kill_t)
+    if poison_t:
+        actual_dead.append(poison_t)
+    night_info = f"昨夜死亡:{', '.join(actual_dead)}" if actual_dead else "昨夜死亡:无人"
 
     user_prompt = f"""【当前局势】
 身份:{role_name} 名字:{player.name}
@@ -1393,7 +1433,8 @@ def _ai_vote(room_id, player_id, token):
             targets = [a for a in alive if a.name not in wolf_names]
             voted = random.choice(targets) if targets else random.choice(alive)
         elif player.role == "seer" and seer_target and "狼人" in seer_result:
-            voted = next((a for a in alive if a.name == seer_target), random.choice(alive))
+            seer_voted = next((a for a in alive if a.name == seer_target), None)
+            voted = seer_voted if seer_voted else random.choice(alive)
         else:
             voted = random.choice(alive)
 
@@ -1448,6 +1489,12 @@ def _resolve_vote(room_id, token, is_pk=False):
             p.alive = False
             dead_names.append(top_voted[0])
             room.add_sys_msg(f"【投票】{top_voted[0]}({ROLES[p.role]['name']})被投票出局!")
+
+    # 记录投票信息供AI次轮参考
+    if dead_names:
+        room.last_vote_info = f"上轮投票:{top_voted[0]}({ROLES[room.get_player_by_name(top_voted[0]).role]['name']})被投出"
+    else:
+        room.last_vote_info = f"上轮投票平票:{'、'.join(top_voted)}，无人出局"
 
     phase_name = "pk_result" if is_pk else "vote_result"
     room.phase = phase_name
