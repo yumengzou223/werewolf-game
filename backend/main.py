@@ -63,7 +63,7 @@ def call_deepseek(messages, max_tokens=200):
 app = Flask(__name__, template_folder=None, static_folder=None)
 CORS(app, resources={r"/*": {"origins": "*"}})
 app.config["SECRET_KEY"] = "werewolf-secret-2024"
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet", allow_upgrades=True, ping_timeout=20, ping_interval=25)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", allow_upgrades=True, ping_timeout=20, ping_interval=25)
 
 
 # ====================== 夜间行动 Few-shot 推理模板 ======================
@@ -2270,4 +2270,4 @@ def on_wolf_chat(data):
 
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5003)), debug=False, log=False)
+    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 5003)), debug=False, allow_unsafe_werkzeug=True)
