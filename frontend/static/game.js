@@ -303,6 +303,7 @@ function onSpeakingEnd(data) {
 }
 
 function onPlayerSpeech(data) {
+  console.log("[onPlayerSpeech] 收到发言:", data);
   if (data.state) gameState = data.state;
   appendMessage({
     speaker_id: data.player_id,
@@ -1033,8 +1034,25 @@ function renderMessages(messages) {
 }
 
 function appendMessage(msg, scroll = true) {
+  console.log("[appendMessage] 添加消息:", msg, "myPlayerName=", myPlayerName);
   const container = document.getElementById("messages-area");
-  if (!container) return;
+  console.log("[appendMessage] container:", container, "display:", container?.style?.display);
+  
+  // 临时调试：在页面标题显示调试信息
+  const debugInfo = document.getElementById("day-num");
+  if (debugInfo) {
+    debugInfo.textContent = `消息:${msg.name||"?"} | page-day:${document.getElementById("page-day")?.style?.display}`;
+  }
+  
+  if (!container) {
+    console.error("[appendMessage] messages-area 容器不存在！");
+    return;
+  }
+  
+  // 检查父容器 page-day 是否显示
+  const pageDay = document.getElementById("page-day");
+  console.log("[appendMessage] page-day display:", pageDay?.style?.display);
+  console.log("[appendMessage] messages-area parent:", container.parentElement?.id);
   const div = document.createElement("div");
   const isMe = msg.speaker_id === myPlayerId;
 

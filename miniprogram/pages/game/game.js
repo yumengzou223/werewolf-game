@@ -628,33 +628,44 @@ Page({
   },
 
   async addAI() {
-    // 弹出人设选择框（/api/personas 是 GET，需单独处理）
+    // 弹出人设选择框
     try {
       const personasRes = await new Promise((resolve, reject) => {
         wx.request({
           url: app.globalData.serverUrl + '/api/personas',
           method: 'GET',
+          timeout: 5000,
           success: resolve,
           fail: reject,
         })
       })
       const personas = personasRes.data?.personas || {}
       const list = Object.entries(personas).map(([key, val]) => ({ key, ...val }))
+      // 排序：特殊项在前，人设在后
+      list.sort((a, b) => {
+        const order = { random: 0, none: 1, mystery_guest: 2 }
+        const oa = order[a.key] ?? 10
+        const ob = order[b.key] ?? 10
+        return oa - ob
+      })
       if (list.length === 0) {
-        // API 返回空，直接添加随机AI
         await this._request(`/api/room/${this.data.myRoomId}/add-ai`, {})
-        this._toast('AI玩家已添加（随机风格）')
+        this._toast('AI玩家已添加')
         return
       }
       this.setData({ showPersonaModal: true, personaList: list, selectedPersona: null })
     } catch (e) {
-      // API 失败时直接添加随机AI
-      try {
-        await this._request(`/api/room/${this.data.myRoomId}/add-ai`, {})
-        this._toast('AI玩家已添加（随机风格）')
-      } catch (e2) {
-        this._toast('添加AI失败')
-      }
+      console.warn('获取人设列表失败:', e)
+      // 超时兜底：用精简预设列表
+      this.setData({
+        showPersonaModal: true,
+        personaList: [
+          { key: 'random', name: '🎲 随机风格', desc: '系统随机分配', tag: 'default' },
+          { key: 'none', name: '无风格', desc: '纯理性分析', tag: 'default' },
+          { key: 'mystery_guest', name: '🎭 神秘嘉宾', desc: '特邀嘉宾空降', tag: 'special' },
+        ],
+        selectedPersona: null,
+      })
     }
   },
 
@@ -672,13 +683,15 @@ Page({
     this.setData({ showPersonaModal: false, selectedPersona: null })
 
     try {
-      if (chosenPersona) {
+      if (chosenPersona && chosenPersona !== 'random') {
+        // 指定人设：none=无风格, mystery_guest=神秘嘉宾, 其他=具体角色
         await this._request(`/api/room/${myRoomId}/add-ai-preset`, { persona: chosenPersona })
         const name = personaList.find(p => p.key === chosenPersona)?.name || ''
         this._toast(`已添加 ${name}`)
       } else {
+        // random 或未选择：走随机AI接口
         await this._request(`/api/room/${myRoomId}/add-ai`, {})
-        this._toast('AI玩家已添加（随机风格）')
+        this._toast('AI玩家已添加')
       }
     } catch (e) {
       this._toast('添加AI失败')

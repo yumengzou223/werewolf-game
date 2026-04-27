@@ -3,6 +3,7 @@
 // ========== 全局状态 ==========
 let socket = null;
 let myPlayerId = null;
+let myPlayerName = null;
 let myRoomId = null;
 let gameState = null;
 let myRole = null;
@@ -22,6 +23,7 @@ window.addEventListener("DOMContentLoaded", function () {
   const params = new URLSearchParams(location.search);
   myRoomId = params.get("room");
   myPlayerId = params.get("pid");
+  myPlayerName = params.get("name") || "我";
 
   if (!myRoomId || !myPlayerId) {
     alert("参数错误，请从首页进入");

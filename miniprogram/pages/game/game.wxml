@@ -101,9 +101,9 @@
     <view class="night-result-card">
       <text class="result-title">🌅 天亮了</text>
       <view wx:if="{{nightDead.length > 0}}">
-        <text class="dead-label">昨夜死亡：</text>
+        <text class="dead-label" user-select>昨夜死亡：</text>
         <view wx:for="{{nightDead}}" wx:key="*this" class="dead-chip">
-          <text>{{item}}</text>
+          <text user-select>{{item}}</text>
           <text wx:if="{{nightDeadRoles[item]}}" style="color:#e74c3c"> ({{nightDeadRoles[item]}})</text>
         </view>
       </view>
@@ -192,7 +192,7 @@
         <view wx:else class="msg-bubble-wrap {{item.speaker_id === myPlayerId ? 'msg-me' : 'msg-other'}}">
           <text class="msg-name">{{item.name}}</text>
           <view class="msg-bubble {{item.speaker_id === myPlayerId ? 'bubble-me' : 'bubble-other'}}">
-            <text>{{item.content}}</text>
+            <text user-select>{{item.content}}</text>
           </view>
         </view>
       </view>
