@@ -689,14 +689,25 @@ def api_add_ai_preset(room_id):
     mystery_names = ["神秘嘉宾", "特邀嘉宾", "隐藏大佬", "沉默观察者", "匿名玩家"]
     used_names = {p.name for p in room.players}
 
+    # 人设名优先：选了具体人设就直接用人设名字
+    persona_name = None
+    if persona_key and persona_key != "mystery_guest" and persona_key in AI_PERSONAS:
+        persona_name = AI_PERSONAS[persona_key].get("name", persona_key)
+        # 名字冲突时加后缀
+        if persona_name in used_names:
+            persona_name = f"{persona_name}{len(room.players)}"
+
     if persona_key == "mystery_guest":
         avail = [n for n in mystery_names if n not in used_names]
         if not avail:
             avail = [n for n in ai_name_pool if n not in used_names]
+        ai_name = random.choice(avail) if avail else f"AI_{generate_id()[:4]}"
+    elif persona_name:
+        ai_name = persona_name
     else:
         avail = [n for n in ai_name_pool if n not in used_names]
+        ai_name = random.choice(avail) if avail else f"AI_{generate_id()[:4]}"
 
-    ai_name = random.choice(avail) if avail else f"AI_{generate_id()[:4]}"
     player = Player(name=ai_name, is_ai=True, persona=persona_key)
     room.add_player(player)
     socketio.emit("player_joined", room.get_state(), room=room_id)
