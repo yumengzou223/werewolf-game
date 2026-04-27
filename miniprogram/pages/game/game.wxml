@@ -228,7 +228,7 @@
 
   <!-- 预言家结果弹窗 -->
   <view wx:if="{{showSeerModal}}" class="modal-overlay" bindtap="closeSeerModal">
-    <view class="seer-modal" catchtap="">
+    <view class="seer-modal" catchtap="stopPropagation">
       <text style="font-size:80rpx">🔮</text>
       <text class="seer-modal-title">预言家查验结果</text>
       <text class="seer-modal-result">{{seerResult}}</text>
@@ -239,7 +239,7 @@
 
   <!-- AI人设选择弹窗 -->
   <view wx:if="{{showPersonaModal}}" class="modal-overlay" bindtap="closePersonaModal">
-    <view class="persona-modal" catchtap="">
+    <view class="persona-modal" catchtap="stopPropagation">
       <text class="persona-modal-title">🤖 选择AI人设</text>
       <view class="persona-list">
         <view

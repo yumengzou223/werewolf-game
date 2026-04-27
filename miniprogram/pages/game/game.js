@@ -680,26 +680,36 @@ Page({
     // 关键：先读取选中值存局部变量，再清 modal（避免异步时序问题）
     const chosenPersona = this.data.selectedPersona
     const { myRoomId, personaList } = this.data
+
+    if (!chosenPersona) {
+      this._toast('请先选择一个人设')
+      return
+    }
+
     this.setData({ showPersonaModal: false, selectedPersona: null })
 
     try {
-      if (chosenPersona && chosenPersona !== 'random') {
+      if (chosenPersona !== 'random') {
         // 指定人设：none=无风格, mystery_guest=神秘嘉宾, 其他=具体角色
         await this._request(`/api/room/${myRoomId}/add-ai-preset`, { persona: chosenPersona })
         const name = personaList.find(p => p.key === chosenPersona)?.name || ''
         this._toast(`已添加 ${name}`)
       } else {
-        // random 或未选择：走随机AI接口
+        // random：走随机AI接口
         await this._request(`/api/room/${myRoomId}/add-ai`, {})
         this._toast('AI玩家已添加')
       }
     } catch (e) {
-      this._toast('添加AI失败')
+      console.error('[addAI] 失败:', e.message || e)
+      this._toast('添加AI失败: ' + (e.message || ''))
     }
   },
 
+  // 阻止事件冒泡（用于 catchtap）
+  stopPropagation() {},
+
   closePersonaModal() {
-    this.setData({ showPersonaModal: false })
+    this.setData({ showPersonaModal: false, selectedPersona: null })
   },
 
   async startGame() {
